@@ -1,0 +1,31 @@
+# Dependências — reconstruíveis a partir dos lockfiles, e pesam 3 GB juntas.
+.venv/
+node_modules/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Segredos. Nenhuma chave é necessária na Fase 1; as opcionais da Fase 2/3
+# (Pexels, Treblo, Postiz) vivem aqui e nunca no repositório.
+.env
+.env.*
+
+# Saídas de render e artefatos de diagnóstico.
+out/
+build/
+sparse/
+*.mp4
+*.mov
+*.webm
+
+# ...mas os SFX do template SÃO o template: sem eles o render quebra com
+# "whoosh.mp3 could not be found". 172 KB bem gastos.
+!assets/*/public/sfx/*.mp3
+
+# Modelos baixados sob demanda (WhisperX, MediaPipe) — grandes e recuperáveis.
+assets/models/*.tflite
+assets/models/*.bin
+
+# Backup pré-renomeação Edvid→Prisma, mantido fora do histórico por ser
+# duplicata morta do que já está versionado.
+helpers.bak.*/

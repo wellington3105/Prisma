@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="PRISMA">
+  <!-- Favicon build of the third-pass aperture: real metal blades, spectrum as
+       a rim on two edges, small opening. Barrel reduced to one hairline — at
+       16px two concentric rings merge into a band. -->
+  <defs>
+    <linearGradient id="k-steel" x1=".1" y1="0" x2=".85" y2="1">
+      <stop offset="0%"   stop-color="#e8edf4"/>
+      <stop offset="42%"  stop-color="#aab4c2"/>
+      <stop offset="100%" stop-color="#69737f"/>
+    </linearGradient>
+    <linearGradient id="k-steel-dim" x1=".1" y1="0" x2=".85" y2="1">
+      <stop offset="0%"   stop-color="#c3ccd8"/>
+      <stop offset="45%"  stop-color="#8c96a3"/>
+      <stop offset="100%" stop-color="#525b66"/>
+    </linearGradient>
+    <linearGradient id="k-warm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffc08a"/>
+      <stop offset="55%" stop-color="#ff8f43"/>
+      <stop offset="100%" stop-color="#e8641b"/>
+    </linearGradient>
+    <linearGradient id="k-cool" x1="1" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#a6c4ff"/>
+      <stop offset="55%" stop-color="#6fb9e8"/>
+      <stop offset="100%" stop-color="#54cdb0"/>
+    </linearGradient>
+    <path id="k-blade" d="M0 -23 A23 23 0 0 1 19.92 -11.5 L1.75 -5.7 A6.5 6.5 0 0 0 -2.2 -8 Z"/>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="#0b0e12"/>
+
+  <g transform="translate(32 32)">
+    <circle r="24.9" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="1.3"/>
+    <g stroke="rgba(8,10,14,.62)" stroke-width=".95" stroke-linejoin="round">
+      <use href="#k-blade" fill="url(#k-steel)"     transform="rotate(0)"/>
+      <use href="#k-blade" fill="url(#k-steel-dim)" transform="rotate(60)"/>
+      <use href="#k-blade" fill="url(#k-steel)"     transform="rotate(120)"/>
+      <use href="#k-blade" fill="url(#k-steel-dim)" transform="rotate(180)"/>
+      <use href="#k-blade" fill="url(#k-steel)"     transform="rotate(240)"/>
+      <use href="#k-blade" fill="url(#k-steel-dim)" transform="rotate(300)"/>
+    </g>
+    <g fill="none" stroke-width="3" stroke-linecap="round">
+      <path d="M-1.7 -23.2 A23.3 23.3 0 0 1 19.4 -12.8" stroke="url(#k-warm)"/>
+      <path d="M1.7 23.2 A23.3 23.3 0 0 1 -19.4 12.8" stroke="url(#k-cool)"/>
+    </g>
+    <circle r="5.2" fill="#06070a"/>
+    <path d="M-3.7 -3.6 A5.2 5.2 0 0 1 1.35 -5" fill="none"
+          stroke="rgba(255,255,255,.62)" stroke-width="1.1" stroke-linecap="round"/>
+  </g>
+</svg>
