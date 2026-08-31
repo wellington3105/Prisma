@@ -229,6 +229,17 @@ Presets: `instant` 5f · `snappy` 6f · `smooth` 12f · `dramatic` 15f ·
 `gentle` 18f · `luxe` 21f. Verificado por render: `energy: high` sem mais nada
 produziu janela de **exatamente 6 frames**.
 
+`render_phase2.py` **avisa** (não bloqueia) quando o edit contraria a doutrina:
+
+- **D3** — mais de 3 tipos de transição, ou nenhum dominando. Alternar dois é
+  padrão legítimo e passa; três em 33/33/33 avisa.
+- **D4** — um insert cuja saída coincide com uma transição. A transição *é* a
+  saída; os dois no mesmo instante se anulam.
+
+São regras de direção, e há vídeo em que quebrá-las é a escolha certa. O que
+não pode é quebrá-las sem perceber — o caso comum quando cada transição é
+escrita isolada.
+
 - **`displace`** — the frame tears along a turbulent field. Regions slide and
   the picture stays readable while it does; it is a dissolve through
   turbulence, not static.

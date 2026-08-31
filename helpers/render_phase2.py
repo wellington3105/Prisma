@@ -71,6 +71,62 @@ def _uses_3d(ed: dict) -> bool:
     return False
 
 
+def check_direction(ed: dict) -> list[str]:
+    """Poka-Yoke da doutrina (OPUS-VFX-3D § D3/D4).
+
+    Avisa, não bloqueia. Estas são regras de direção de arte, e há vídeo em que
+    quebrá-las é a escolha certa — o que não pode acontecer é quebrá-las **sem
+    perceber**, que é o caso comum quando cada transição é escrita isolada.
+
+    D3 — uma primária (60-70% das trocas) + 1-2 acentos. Um vídeo com sete
+         transições diferentes não parece rico, parece indeciso.
+    D4 — a transição É a saída. Animar a saída de um insert E aplicar uma
+         transição no mesmo instante faz os dois se anularem.
+    """
+    avisos: list[str] = []
+    trs = [t for t in (ed.get("transitions") or []) if isinstance(t, dict)]
+
+    # --- D3 -----------------------------------------------------------------
+    if len(trs) >= 3:
+        tipos: dict[str, int] = {}
+        for t in trs:
+            k = str(t.get("type") or "flash")
+            tipos[k] = tipos.get(k, 0) + 1
+        ordenados = sorted(tipos.items(), key=lambda kv: -kv[1])
+        principal, n = ordenados[0]
+        share = n / len(trs)
+        if len(tipos) > 3:
+            avisos.append(
+                f"D3: {len(tipos)} tipos de transição em {len(trs)} cortes "
+                f"({', '.join(k for k, _ in ordenados)}). A doutrina pede UMA "
+                f"primária + 1-2 acentos — ver references/direction.md")
+        elif share < 0.5 and len(trs) >= 4:
+            avisos.append(
+                f"D3: nenhuma transição domina ('{principal}' em {share*100:.0f}% "
+                f"dos cortes). Sem uma primária clara o vídeo lê como indeciso")
+
+    # --- D4 -----------------------------------------------------------------
+    # Um insert cuja saída coincide com uma transição: a transição já É a saída,
+    # e o fade do insert a esvazia. Meio frame de tolerância, porque os tempos
+    # vêm de fontes diferentes (EDL e edição manual).
+    fps = float(ed.get("fps") or FPS_DEFAULT)
+    tol = 0.5 / fps
+    for it in (ed.get("inserts") or []):
+        if not isinstance(it, dict) or "end" not in it:
+            continue
+        for t in trs:
+            at = t.get("at")
+            if at is None:
+                continue
+            if abs(float(at) - float(it["end"])) <= tol:
+                avisos.append(
+                    f"D4: o insert que termina em {it['end']}s coincide com a "
+                    f"transição em {at}s. A transição É a saída — os dois no "
+                    f"mesmo instante se anulam. Afaste um deles ou remova a "
+                    f"transição")
+    return avisos
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--edit", required=True, help="the <videos_dir>/edit directory")
@@ -95,6 +151,10 @@ def main() -> None:
     ed = json.loads(ed_p.read_text(encoding="utf-8"))
     fps = int(ed.get("fps") or FPS_DEFAULT)
     video_lag_ms = 1000 // fps  # OffthreadVideo draws one frame late
+
+    # Antes do render: um aviso depois de 2 minutos de encode chega tarde.
+    for aviso in check_direction(ed):
+        print(f"[direção] {aviso}", flush=True)
 
     if not args.skip_render:
         npx = shutil.which("npx") or shutil.which("npx.cmd")
