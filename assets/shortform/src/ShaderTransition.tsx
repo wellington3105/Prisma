@@ -34,17 +34,64 @@ import {
 // Same import direction CustomGraphics.tsx already uses for Sfx.
 import {Sfx} from './Main';
 
+/**
+ * Presets nomeados de references/direction.md § Presets. São o vocabulário
+ * fechado de duração: escolher "0.37s" a olho é o que produz um vídeo em que
+ * cada transição dura um tempo diferente sem motivo.
+ *
+ * A tabela ali está em segundos; aqui em frames a 30fps, que é o que o
+ * template conta. Intensidade acompanha a duração — uma transição de 0.15s
+ * precisa ser forte para ser percebida; uma de 0.7s, contida.
+ */
+export const CUT_PRESETS = {
+  instant: {frames: 5, intensity: 1.0},   // 0.15s · expo.inOut
+  snappy: {frames: 6, intensity: 1.0},    // 0.20s · power4.inOut
+  smooth: {frames: 12, intensity: 0.8},   // 0.40s · power2.inOut
+  dramatic: {frames: 15, intensity: 0.9}, // 0.50s · power3
+  gentle: {frames: 18, intensity: 0.6},   // 0.60s · sine.inOut
+  luxe: {frames: 21, intensity: 0.5},     // 0.70s · power1.inOut
+} as const;
+
+/** Energia → preset. Tabela Energia→duração de direction.md. */
+export const ENERGY_PRESET = {
+  calm: 'gentle',
+  medium: 'smooth',
+  high: 'snappy',
+} as const;
+
+export type CutPreset = keyof typeof CUT_PRESETS;
+export type Energy = keyof typeof ENERGY_PRESET;
+
 export type ShaderCut = {
   at: number;
   type: 'displace' | 'refract';
-  /** 0..1, default 1. Scales how far pixels travel. */
+  /** 0..1. Sem isto, vem do preset. */
   intensity?: number;
-  /** Total frames. Default 9 (~300ms at 30fps) — see direction.md for energy. */
+  /** Total de frames. Sem isto, vem do preset. */
   frames?: number;
+  /** Preset nomeado. Sem isto, vem de `direction.energy`; sem ela, 'smooth'. */
+  preset?: CutPreset;
   src?: string;
   /** Cut SFX, same contract as the overlay transitions. */
   sfx?: string;
   volume?: number;
+};
+
+/**
+ * Resolve duração e intensidade na ordem: valor explícito > preset do corte >
+ * energia do vídeo > default.
+ *
+ * A ordem importa: o preset é a regra, o valor explícito é a exceção. Escrever
+ * `frames` direto continua possível — mas quem não escreve recebe um número
+ * que veio da doutrina, não de um default arbitrário.
+ */
+export const resolveCut = (cut: ShaderCut, energy?: Energy) => {
+  const nome = cut.preset ?? (energy ? ENERGY_PRESET[energy] : 'smooth');
+  const p = CUT_PRESETS[nome] ?? CUT_PRESETS.smooth;
+  return {
+    frames: cut.frames ?? p.frames,
+    intensity: cut.intensity ?? p.intensity,
+  };
 };
 
 const VERT = /* glsl */ `
@@ -202,12 +249,15 @@ const OneTransition: React.FC<{cut: ShaderCut; total: number}> = ({cut, total}) 
   );
 };
 
-export const ShaderTransitions: React.FC<{items: ShaderCut[]}> = ({items}) => {
+export const ShaderTransitions: React.FC<{items: ShaderCut[]; energy?: Energy}> = ({
+  items,
+  energy,
+}) => {
   const {fps} = useVideoConfig();
   return (
     <>
       {items.map((cut, i) => {
-        const total = cut.frames ?? 9;
+        const {frames: total, intensity} = resolveCut(cut, energy);
         // Centre the window on the cut. VIDEO_LAG (+1) matches the one
         // CustomGraphics applies: OffthreadVideo draws the source frame at or
         // before frame/fps, so an uncompensated effect fires one frame early.
@@ -216,7 +266,7 @@ export const ShaderTransitions: React.FC<{items: ShaderCut[]}> = ({items}) => {
         return (
           <Sequence key={i} from={from} durationInFrames={total} layout="none">
             <AbsoluteFill>
-              <OneTransition cut={cut} total={total} />
+              <OneTransition cut={{...cut, intensity}} total={total} />
             </AbsoluteFill>
             {/* The click lands ON the cut, not at the window's start — the
                 window opens before it. Same file and level the overlay

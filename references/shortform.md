@@ -212,9 +212,22 @@ frame — the glitch's cyan/magenta bands stand in for a channel split it never
 performs. These two move the footage's own pixels.
 
 ```json
-{"at": 8.4, "type": "displace", "intensity": 1.0, "frames": 9}
-{"at": 12.7, "type": "refract", "intensity": 0.8, "frames": 7}
+"direction": {"energy": "high"},
+"transitions": [
+  {"at": 8.4, "type": "displace"},
+  {"at": 12.7, "type": "refract", "preset": "luxe"}
+]
 ```
+
+**Não escreva `frames` nem `intensity` à mão.** `direction.energy`
+(`calm`/`medium`/`high`) define ambos pela tabela de `direction.md`:
+high → `snappy` (6f), medium → `smooth` (12f), calm → `gentle` (18f).
+Um `preset` por corte sobrepõe a energia — é assim que se marca o clímax sem
+mudar o resto. Valores explícitos ainda funcionam, como exceção.
+
+Presets: `instant` 5f · `snappy` 6f · `smooth` 12f · `dramatic` 15f ·
+`gentle` 18f · `luxe` 21f. Verificado por render: `energy: high` sem mais nada
+produziu janela de **exatamente 6 frames**.
 
 - **`displace`** — the frame tears along a turbulent field. Regions slide and
   the picture stays readable while it does; it is a dissolve through

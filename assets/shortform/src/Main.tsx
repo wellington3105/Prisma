@@ -33,7 +33,7 @@ import segData from '../public/segments.json';
 import editData from '../public/edit-data.json';
 import {GlassPanel, type GlassSpec} from './GlassPanel';
 import {TrackedScene, type TrackedBlock, type TrackedData} from './TrackedScene';
-import {ShaderTransitions, type ShaderCut} from './ShaderTransition';
+import {ShaderTransitions, type ShaderCut, type Energy} from './ShaderTransition';
 import {CustomGraphics} from './CustomGraphics';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
@@ -121,6 +121,10 @@ export type EditData = {
   soundtrack: {enabled: boolean; file: string; volume: number};
   /** Optional refracting glass panel — gated by `elements.glassPanel`.
    *  Absent (the default) means the WebGL layer never mounts. */
+  /** Direção de arte — energia do vídeo. Define duração e intensidade das
+   *  transições por preset, em vez de números escolhidos a olho.
+   *  Ver references/direction.md § Energia. */
+  direction?: {energy?: Energy};
   glass?: GlassBlock;
   /** Objetos ancorados no espaço 3D da cena — gated por `elements.tracked3d`.
    *  Requer camera.json de helpers/camera_solve_colmap.py em public/. */
@@ -812,7 +816,7 @@ export const Main: React.FC = () => {
           glitch and are split out by type here: those three are overlays and
           belong to CustomGraphics, these two need the footage as a texture.
           One list in edit-data.json, two renderers, no duplicated timing. */}
-      <ShaderTransitions items={shaderCuts} />
+      <ShaderTransitions items={shaderCuts} energy={D.direction?.energy} />
       <CustomGraphics />
       {D.hook.enabled ? <HookIntro /> : null}
       {D.captions.enabled
