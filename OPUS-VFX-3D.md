@@ -411,6 +411,36 @@ equivalência — mapeamento explícito em D2, não conversão no olho.
 
 ---
 
+## 6b. O longform ficou de fora — medido (2026-08-31)
+
+Tudo o que este Opus construiu é **exclusivo do template vertical**. Medido no
+fim da execução:
+
+| | shortform | longform |
+|---|---:|---:|
+| Arquivos `src/` | 11 | **2** |
+| Linhas | 3.038 | **200** |
+| Dependências | 10 (com `three`, `@remotion/three`) | **6** — sem WebGL |
+| Glass · shader cuts · tracked · cover · spring | ✅ | **nenhum** |
+
+O longform tem `BrollEl`, `LowerThird`, `ChapterCard`, `CalloutEl` e
+`Soundtrack` — stubs funcionais de ~18 linhas cada, herdados do P1 do
+`EVOLUCAO-OPUS.md`. Um vídeo horizontal hoje não tem painel de vidro, nem
+transição com displacement, nem ancoragem 3D, nem B-roll fullscreen.
+
+**Por que não foi feito junto:** cada recurso deste Opus foi verificado com
+render real e still medido, no template vertical. Portá-los para o horizontal
+não é copiar arquivos — é refazer essa verificação num aspecto diferente, onde
+as coordenadas de `rect`, os limiares de safe-area e o enquadramento do painel
+mudam. É um Opus próprio, não um apêndice deste.
+
+**O que já ajuda quando ele começar:** `GlassPanel`, `ShaderTransition` e
+`TrackedScene` são data-driven e independentes do aspecto — o `rect` do vidro é
+0..1, e o solve não sabe se o vídeo é vertical. O trabalho real está em
+recalibrar as constantes de layout e revalidar cada still.
+
+---
+
 ## 7. Pendências pré-existentes (herdadas, fora deste Opus)
 
 Registradas para não se perderem — **não** são escopo daqui:
@@ -506,8 +536,18 @@ inválido com mensagem clara.
   mudanças** e não relacionado a elas. O bundle compilando é a prova de
   não-regressão disponível sem um projeto real.
 
-**Pendente de verificação:** render 2D ponta a ponta num projeto real com
-mídia, para confirmar byte-identidade com o comportamento anterior.
+**✅ Verificado (2026-08-31), pendência fechada.** Render 2D ponta a ponta num
+projeto real com mídia: `edit-data.json` **sem nenhum bloco novo** (`glass`,
+`tracked`, `text3d`, `direction` removidos), com headline, legendas karaokê,
+insert e câmera dinâmica ativos. 45 frames, 1080×1920.
+
+- Renderizou **sem `--gl`** — o caminho 2D não cria contexto WebGL, como o
+  `_uses_3d()` promete.
+- Still de 3 frames: headline nas duas linhas, insert entrando e saindo com
+  fade, legenda variando (3.279 → 5.498 → 8.520 pixels claros no rodapé, o
+  karaokê progredindo).
+
+Todas as camadas 2D intactas com os recursos deste Opus instalados.
 
 ### B1 — `fit: 'cover' | 'contain'` ✅ (2026-08-31)
 

@@ -23,6 +23,7 @@ import React, {useMemo} from 'react';
 import * as THREE from 'three';
 import {useThree, useFrame} from '@react-three/fiber';
 import {ThreeCanvas, useOffthreadVideoTexture} from '@remotion/three';
+import {GlassSlab} from './GlassSlab';
 import {
   AbsoluteFill,
   staticFile,
@@ -56,7 +57,18 @@ type Placement = {
 export type TrackedObject =
   | (Placement & {kind: 'box'; size?: number; color?: string})
   | (Placement & {kind: 'panel'; w?: number; h?: number; color?: string; opacity?: number})
-  | (Placement & {kind: 'text'; text: string; size?: number; color?: string});
+  | (Placement & {kind: 'text'; text: string; size?: number; color?: string})
+  // O painel de vidro da referência: curvo, com borda luminosa, e ANCORADO —
+  // acompanha a cena em perspectiva em vez de ficar colado ao quadro.
+  | (Placement & {
+      kind: 'glass';
+      w?: number;
+      h?: number;
+      curve?: number;
+      edge?: string;
+      tint?: string;
+      opacity?: number;
+    });
 
 export type Plane = {
   normal: [number, number, number];
@@ -135,6 +147,24 @@ const resolvePlacement = (o: TrackedObject, planes?: Plane[]) => {
 const Obj: React.FC<{o: TrackedObject; planes?: Plane[]}> = ({o, planes}) => {
   const {at, rot} = resolvePlacement(o, planes);
   const rotation = (rot ?? [0, 0, 0]).map((d) => (d * Math.PI) / 180) as [number, number, number];
+  if (o.kind === 'glass') {
+    // O GlassSlab recebe a rotação em GRAUS e converte por conta própria — daí
+    // passar `rot`, não `rotation`.
+    return (
+      <GlassSlab
+        spec={{
+          at,
+          rotation: rot,
+          w: o.w,
+          h: o.h,
+          curve: o.curve,
+          edge: o.edge,
+          tint: o.tint,
+          opacity: o.opacity,
+        }}
+      />
+    );
+  }
   if (o.kind === 'panel') {
     return (
       <mesh position={at} rotation={rotation}>

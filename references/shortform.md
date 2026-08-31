@@ -343,6 +343,28 @@ assenta, não em que coordenada fica:
 }
 ```
 
+**O painel de vidro ancorado** (`kind: "glass"`) é o efeito da referência: um
+painel curvo com borda luminosa que **existe na cena**, visto de ângulos
+diferentes conforme a câmera se move.
+
+```json
+"objects": [
+  {"kind": "glass", "at": [-2.6, -1.4, 4.0], "rotation": [0, 22, 0],
+   "w": 2.2, "h": 1.6, "curve": 0.06, "opacity": 0.5},
+  {"kind": "glass", "onPlane": 0, "w": 1.6, "h": 1.2, "tint": "#a8e0ff"}
+]
+```
+
+Vários painéis em ângulos diferentes compõem o quadro — é assim que a
+referência preenche a cena. `curve` abaula levemente (0 = plano, 0.1 = muito),
+`tint` colore o vidro, `edge` a moldura.
+
+**Não confundir com `glass` no topo do `edit-data.json`**: aquele é um painel
+colado ao quadro, com refração da footage. Este vive no espaço 3D e acompanha
+a perspectiva, mas não amostra o que está atrás — um shader dentro da cena não
+alcança o que a câmera já desenhou. Para um painel fixo sobre o falante, use o
+primeiro; para painéis que pertencem ao ambiente, este.
+
 `onPlane` traz a **rotação junto** — um objeto sobre a mesa nasce deitado nela.
 `lift` o afasta da superfície (senão brigam por z-fighting) e `offset` o desloca
 a partir do centro do plano.
