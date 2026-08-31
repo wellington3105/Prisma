@@ -251,6 +251,26 @@ não translada — uma panorâmica no tripé não tem baseline, e nenhum algorit
 extrai profundidade daí, por mais features que haja. Regravar andando resolve;
 insistir não.
 
+**Antes de gastar 2 minutos no solve, olhe o que o tracking está vendo:**
+
+```bash
+uv run python helpers/camera_track.py <video> --debug-video dbg.mp4
+```
+
+Gera o vídeo com os pontos verdes — o mesmo overlay que a referência do
+Instagram exibe. O que procurar, e que nenhuma métrica do gate mostra:
+
+- **Pontos no AMBIENTE, não no falante.** Um ponto na mão ou no rosto se move
+  com a *pessoa*, não com a *cena*, e o solve o interpreta como movimento de
+  câmera. Medido no material de teste: a maioria dos pontos grudou no
+  apresentador, e é a explicação mais provável do resíduo de ~23px na
+  ancoragem.
+- **Rastro contínuo**, não pontos piscando.
+- **Cobertura espalhada** pelo quadro, não um aglomerado num canto.
+
+Enquadramento com mais cenário e menos close resolve — o gate aprova pela
+quantidade de features, e a qualidade delas só se vê olhando.
+
 **Requisitos do material**, medidos em três clipes:
 
 - **Translação real da câmera.** Andar pelo ambiente, não girar no lugar.

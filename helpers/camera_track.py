@@ -195,6 +195,54 @@ def gate(m: dict) -> tuple[bool, str]:
     return True, "cena adequada para camera solve"
 
 
+def render_debug(video: Path, data: dict, out: Path, start: float) -> None:
+    """Desenha as trilhas sobre o vídeo — o overlay verde da referência.
+
+    Serve a dois propósitos, e o segundo é o que justifica o código: mostra ao
+    usuário o que o tracking está vendo (o app da referência exibe exatamente
+    isto), e permite julgar a QUALIDADE do rastreio olhando, em vez de confiar
+    nos números do gate. Rastro ralo, pontos grudados no falante em vez do
+    ambiente, ou pontos escorregando — nada disso aparece numa mediana.
+
+    A cauda de cada trilha é desenhada em degradê: um ponto isolado não diz se
+    está preso à cena ou vagando, o rastro diz.
+    """
+    cap = cv2.VideoCapture(str(video))
+    if start > 0:
+        cap.set(cv2.CAP_PROP_POS_MSEC, start * 1000.0)
+    fps = data.get("fps") or cap.get(cv2.CAP_PROP_FPS) or 30.0
+    w, h = data["width"], data["height"]
+    vw = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+
+    # {frame: [(x, y, idade)]} — montado uma vez, em vez de varrer as trilhas
+    # a cada frame.
+    porf: dict[int, list] = {}
+    for tr in data["tracks"]:
+        for k, (f, x, y) in enumerate(tr):
+            porf.setdefault(int(f), []).append((x, y, k, tr))
+
+    n = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok or n > max(porf, default=0):
+            break
+        for x, y, k, tr in porf.get(n, []):
+            # Rastro: até 8 posições anteriores, esmaecendo.
+            for j in range(max(0, k - 8), k):
+                _, px, py = tr[j]
+                a = (j - max(0, k - 8)) / 8.0
+                cv2.circle(frame, (int(px), int(py)), 1,
+                           (0, int(120 + 135 * a), 0), -1)
+            cv2.drawMarker(frame, (int(x), int(y)), (0, 255, 0),
+                           cv2.MARKER_CROSS, 9, 1)
+        cv2.putText(frame, f"{len(porf.get(n, []))} features", (24, 48),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 0), 2)
+        vw.write(frame)
+        n += 1
+    cap.release()
+    vw.release()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("video")
@@ -202,6 +250,9 @@ def main() -> None:
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float, default=None)
     ap.add_argument("--max-frames", type=int, default=300)
+    ap.add_argument("--debug-video", metavar="MP4",
+                    help="grava o overlay de tracking (pontos verdes) para "
+                         "inspeção visual da qualidade do rastreio")
     args = ap.parse_args()
 
     m = track(Path(args.video), args.start, args.end, args.max_frames)
@@ -219,6 +270,12 @@ def main() -> None:
     if args.out and ok:
         Path(args.out).write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
         resumo["out"] = args.out
+
+    # O debug roda mesmo com o gate reprovado — é justamente quando ver ajuda
+    # mais: ele mostra POR QUE a cena foi recusada.
+    if args.debug_video and "tracks" in m:
+        render_debug(Path(args.video), m, Path(args.debug_video), args.start)
+        resumo["debug_video"] = args.debug_video
 
     print(json.dumps(resumo, ensure_ascii=False, indent=1))
     if not ok:
