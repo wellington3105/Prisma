@@ -1229,6 +1229,44 @@ das curvas da fonte. O custo é converter a fonte (facetype.js) e aceitar
 bordas sem anti-aliasing de SDF, que num letreiro grande e estático importa
 pouco.
 
+### Ancoragem via HTML/CSS ⚠️ MATEMÁTICA CONFIRMADA, IMPLEMENTAÇÃO NÃO (2026-08-31)
+
+**Pergunta do usuário:** *"html não seria mais fácil trabalhar?"* — e a
+premissa está certa: o Remotion **já é HTML**. Cada frame é uma página no
+Chromium; legendas, headline e inserts são DOM com CSS. Para texto, HTML é mais
+nítido e mais simples que qualquer textura ou geometria 3D.
+
+**A matemática confirma que dá para ancorar sem WebGL.** Teste isolado
+(`m3d.test.mjs`, descartado depois de responder): projetei 5 pontos pelo pinhole
+do COLMAP e pela matriz que o CSS receberia. **Erro de 0.0000px em todos.** Não
+é aproximação — o CSS 3D divide por z com a mesma equação, e `perspective` igual
+à focal do solve faz as duas projeções coincidirem.
+
+**A implementação não saiu.** `AnchoredHtml.tsx` renderizou três vezes sem
+nenhum elemento visível:
+
+1. Posições escolhidas a olho → fora do campo de visão (a projeção dava
+   coordenadas negativas, o que eu deveria ter checado antes de renderizar).
+2. Posições **medidas** por varredura — 1.245 pontos visíveis em 45/45 frames —
+   → ainda nada.
+
+Como o erro persiste com posições comprovadamente visíveis, o defeito está na
+minha montagem da `matrix3d` (ordem coluna-major, composição da rotação, ou o
+ponto de origem do `transform`), não na geometria da cena. Revertido; o template
+está no estado do commit anterior, `tsc` exit 0.
+
+**Por que vale retomar:** substituiria os cartões PNG por texto real (nítido em
+qualquer escala, editável) e destravaria a tipografia 3D que o troika bloqueou.
+
+**Como retomar sem repetir o erro:** montar a matriz num teste que compara a
+posição do `<div>` no DOM renderizado com a projeção esperada — do jeito que o
+`poseMath.test.mjs` fez para o `TrackedScene`, que achou 1283px de erro em
+milissegundos. Renderizar e olhar custou três ciclos e não disse qual termo
+estava errado.
+
+**O que continua exigindo WebGL, e não muda:** refração da footage (`glass`) e
+displacement nas transições. CSS borra, não desloca.
+
 ### Ken-Burns por modo
 
 Full-frame deriva menos que card: os mesmos 8% que leem como suave num card de
