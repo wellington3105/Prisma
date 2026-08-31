@@ -1175,11 +1175,19 @@ de render.
 |---|---|
 | `TextGeometry` do Three + fonte JSON (facetype.js) | Sem worker, mas exige converter a fonte e não tem SDF: bordas serrilhadas em close |
 | Textura de canvas 2D num plano | Trivial e sem dependência; **borra** quando a câmera se aproxima ou o plano se inclina — que é justamente o caso de uso |
-| `configureTextBuilder({useWorker: false})` do troika | A API existe; não a testei. Seria a primeira coisa a tentar ao retomar |
+| ~~`configureTextBuilder({useWorker: false})`~~ | ⛔ **testado, não resolve** |
 
-**Recomendação ao retomar:** começar por `useWorker: false`. Se resolver, o
-resto do componente já está escrito e verificado — só a etapa de build do SDF
-mudaria.
+**`useWorker: false` descartado (2026-08-31).** Era a hipótese mais promissora
+e custou minutos em vez de horas porque testei numa **sonda isolada** — uma
+composição mínima com texto vermelho sobre fundo azul — em vez de recriar o
+componente inteiro para descobrir o mesmo. Resultado: **0 pixels**. Nem sem
+worker o troika constrói glifos neste ambiente.
+
+**Recomendação ao retomar, revista:** `TextGeometry` do Three com fonte JSON.
+Não usa worker nem SDF — a geometria é construída de forma síncrona a partir
+das curvas da fonte. O custo é converter a fonte (facetype.js) e aceitar
+bordas sem anti-aliasing de SDF, que num letreiro grande e estático importa
+pouco.
 
 ### Ken-Burns por modo
 
