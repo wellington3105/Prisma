@@ -148,7 +148,7 @@ Sem isso, nada dos outros épicos existe.
 | **G2** | Dispersão cromática nas bordas (o "prisma") | Still ampliado mostra separação RGB nas bordas, sutil |
 | **G3** | Fluidez: entrada/saída com spring physics, sem pop | Sequência de 5 stills mostra progressão contínua |
 | **G4** | Preset de intensidade no `edit-data.json` | 3 níveis rendem visivelmente diferentes |
-| **G5** | **Tipografia 3D com perspectiva** — texto deitado num plano do espaço, com profundidade (observado na referência: "Aprenda a fazer" no plano da mesa) | Still mostra o texto em perspectiva, coerente com o plano. Com C6, alinhado a uma superfície **real** da cena |
+| **G5** | **Tipografia 3D com perspectiva** — texto deitado num plano do espaço, com profundidade (observado na referência: "Aprenda a fazer" no plano da mesa) | ⛔ **tentado e revertido** — ver §8 |
 
 ### ÉPICO B — B-roll fullscreen fluido
 
@@ -1144,6 +1144,42 @@ diff — só olhando o frame. Foi por isso que olhei.
 
 **Gate:** `shaderCut` ("Transição com distorção"), `def: false`. Catálogo agora
 com **9 elementos**.
+
+### G5 — tipografia 3D ⛔ TENTADO E REVERTIDO (2026-08-31)
+
+`troika-three-text` (MIT, 0.8 MB, peer dep já satisfeita) integrado como
+`src/Text3D.tsx`. **Revertido**: o template está de volta ao estado do commit
+`efaa98d`, `tsc` exit 0, dependência desinstalada.
+
+**O que aconteceu, em ordem:**
+
+1. Sem `sync()`, a malha renderiza posicionada e **sem glifo nenhum** — falha
+   silenciosa, zero erro no log. Medido: **78 pixels** da cor do texto onde
+   deveriam existir milhares.
+2. Com `sync()` no `ref`: idem. A chamada é assíncrona e não termina antes do
+   draw.
+3. Com `delayRender` segurando o frame até `preloadFont` → `sync()`: o render
+   **morre** com *"delayRender was called but not cleared after 28000ms"* — o
+   callback nunca volta.
+4. Com rede de segurança de 3s liberando o `delayRender`: render passa,
+   **texto continua ausente (78 px)**.
+
+**Causa raiz:** o troika delega a geração de SDF a um **Web Worker**, e no
+Chromium headless do Remotion esse worker não conclui. Não é ajuste de
+parâmetro — é incompatibilidade de arquitetura entre a biblioteca e o ambiente
+de render.
+
+**Alternativas, nenhuma testada:**
+
+| Caminho | Custo |
+|---|---|
+| `TextGeometry` do Three + fonte JSON (facetype.js) | Sem worker, mas exige converter a fonte e não tem SDF: bordas serrilhadas em close |
+| Textura de canvas 2D num plano | Trivial e sem dependência; **borra** quando a câmera se aproxima ou o plano se inclina — que é justamente o caso de uso |
+| `configureTextBuilder({useWorker: false})` do troika | A API existe; não a testei. Seria a primeira coisa a tentar ao retomar |
+
+**Recomendação ao retomar:** começar por `useWorker: false`. Se resolver, o
+resto do componente já está escrito e verificado — só a etapa de build do SDF
+mudaria.
 
 ### Ken-Burns por modo
 
