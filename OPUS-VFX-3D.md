@@ -1258,11 +1258,40 @@ está no estado do commit anterior, `tsc` exit 0.
 **Por que vale retomar:** substituiria os cartões PNG por texto real (nítido em
 qualquer escala, editável) e destravaria a tipografia 3D que o troika bloqueou.
 
-**Como retomar sem repetir o erro:** montar a matriz num teste que compara a
-posição do `<div>` no DOM renderizado com a projeção esperada — do jeito que o
-`poseMath.test.mjs` fez para o `TrackedScene`, que achou 1283px de erro em
-milissegundos. Renderizar e olhar custou três ciclos e não disse qual termo
-estava errado.
+**Segunda tentativa (2026-08-31), com teste antes — avançou e não fechou.**
+
+O teste isolado achou o erro do primeiro ciclo: `perspective` do CSS **não**
+reproduz a pinhole. O CSS divide por `(p − z)` e a câmera por `z` puro — são
+curvas diferentes, e isso valia **1164px**. Projetar à mão (escalar por `F/z`,
+posicionar em px, sem `perspective`) dá **0.0000px**.
+
+Com a projeção certa, os cartões **aparecem, com texto nítido e legível** — o
+ganho de qualidade sobre o PNG é visível. Mas a posição continua errada:
+
+| Frame | Medido | Previsto | Erro |
+|---|---|---|---:|
+| 4 | (86, 1502) | (214, 833) | 681px |
+| 12 | (229, 1228) | (364, 895) | 360px |
+| 20 | (333, 1223) | (544, 854) | 425px |
+| 28 | (411, 1233) | (721, 818) | 518px |
+
+**O padrão é informativo:** o cartão anda na direção certa com **metade da
+amplitude** (86→411 onde a projeção pede 214→721) e ~400px abaixo. Isso é
+compressão de escala, não deslocamento constante.
+
+Testei a hipótese óbvia — `translate(-50%,-50%)` resolvido contra a caixa já
+escalada — separando posição e escala em elementos distintos. **Não mudou nada**
+(496.1px contra 494.9px). Logo a causa é outra: provavelmente um contêiner
+ancestral com transformação própria, ou o `AbsoluteFill` do Remotion aplicando
+escala de composição que eu não estou compensando.
+
+**Estado:** revertido, `tsc` exit 0. Os cartões PNG via WebGL (22.9px) seguem
+sendo o caminho que funciona.
+
+**Como retomar:** medir a caixa do elemento no DOM durante o render
+(`getBoundingClientRect` num `delayRender`) e comparar com `left/top` pedido.
+Isso diz se o CSS está aplicando o que foi escrito — que é a pergunta que ainda
+não respondi, e que nenhum still responde.
 
 **O que continua exigindo WebGL, e não muda:** refração da footage (`glass`) e
 displacement nas transições. CSS borra, não desloca.
