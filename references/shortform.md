@@ -191,6 +191,11 @@ the historical card, so old `edit-data.json` files keep working.
   component picks `OffthreadVideo` or `Img` from the extension, and video
   inserts render muted — the cut owns the audio bed.
 
+- **`frame`** — `"glass"` desenha o insert **refratado através do painel de
+  vidro** em vez de como card chapado, na mesma posição (780×500 a 90px do
+  topo). Exige `elements.glassPanel` marcado; ajuste fino em
+  `glass: {intensity, dispersion, radius}`. Não combina com `fit`: o painel tem
+  geometria própria.
 - **`enter`** — gated by `elements.springIn`. `"cubic"` (default, and what you
   get by omitting the field) is the historical ease-out. `"spring"` overshoots
   and settles. Exits are always `interpolate`: a spring's duration emerges from

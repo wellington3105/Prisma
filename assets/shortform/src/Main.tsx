@@ -59,6 +59,11 @@ type Insert = {
   drift?: {from: number; to: number};
   /** Entrance curve. 'cubic' (default) is the historical one. */
   enter?: InsertEnter;
+  /** 'glass' renders the insert refracted through the glass panel instead of
+   *  as a flat card. Gated by `elements.glassPanel` + `elements.brollFull`. */
+  frame?: 'none' | 'glass';
+  /** Tuning do vidro, quando `frame: 'glass'`. */
+  glass?: {intensity?: number; dispersion?: number; radius?: number};
 };
 type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
@@ -524,6 +529,33 @@ const Inserts: React.FC = () => {
       {D.inserts.map((it, i) => {
         const from = Math.round(it.start * fps);
         const duration = Math.round((it.end - it.start) * fps);
+        // Um insert de vidro não é um card com borda bonita: o GlassPanel
+        // REFRATA a footage, e para isso ela tem de estar dentro do WebGL.
+        // São dois caminhos de render distintos, não uma variação de estilo.
+        if (it.frame === 'glass') {
+          return (
+            <Sequence key={i} from={from} durationInFrames={duration} layout="none">
+              <AbsoluteFill>
+                <GlassPanel
+                  spec={{
+                    src: it.src,
+                    intensity: it.glass?.intensity,
+                    dispersion: it.glass?.dispersion,
+                    radius: it.glass?.radius,
+                    // Área do card histórico (780x500 a 90px do topo, em
+                    // 1080x1920): trocar `frame` muda como o insert é
+                    // desenhado, não onde ele fica.
+                    // O Y é medido de BAIXO para cima — o shader trabalha em
+                    // UV, convenção do OpenGL. Com y=0.047 (o valor "de cima")
+                    // o painel saiu no rodapé, borda medida em y=1330.
+                    // y_uv = 1 − (topo + altura)/H = 1 − 590/1920 = 0.693.
+                    rect: {x: 0.139, y: 0.693, w: 0.722, h: 0.26},
+                  }}
+                />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        }
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
             <InsertCard src={it.src} totalFrames={duration} fit={it.fit} drift={it.drift} enter={it.enter} />
