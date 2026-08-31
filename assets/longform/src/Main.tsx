@@ -23,6 +23,9 @@ import {
 } from 'remotion';
 import {loadFont} from '@remotion/google-fonts/Poppins';
 import editData from '../public/edit-data.json';
+import {GlassPanel, type GlassSpec} from './GlassPanel';
+import {ShaderTransitions, type ShaderCut, type Energy} from './ShaderTransition';
+import {TrackedScene, type TrackedBlock, type TrackedData} from './TrackedScene';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -44,13 +47,37 @@ export type EditData = {
   chapters: Chapter[];
   callouts: Callout[];
   soundtrack: {enabled: boolean; file: string; volume: number};
+  // As camadas VFX, iguais às do shortform. Os componentes não sabem o aspecto
+  // do vídeo — `rect` é 0..1 e o camera solve trabalha no espaço do mundo —
+  // então o que muda no horizontal é o ENQUADRAMENTO, não o código.
+  direction?: {energy?: Energy};
+  transitions?: ShaderCut[];
+  glass?: GlassBlock;
+  tracked?: TrackedBlock;
+};
+
+type GlassBlock = GlassSpec & {
+  enabled: boolean;
+  windows?: {start: number; end: number}[];
 };
 
 const D = editData as unknown as EditData;
+
+// camera.json é opcional e gerado por helper — import estático quebraria todo
+// projeto que não usa ancoragem 3D.
+let trackedData: TrackedData | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  trackedData = require('../public/camera.json') as TrackedData;
+} catch {
+  trackedData = null;
+}
+
+const SHADER_CUT_TYPES = ['displace', 'refract'] as const;
 const ACCENT = D.accent || '#33e0a3';
 const MARGIN = 96; // 16:9 safe margin
 
-const Sfx: React.FC<{src: string; volume?: number}> = ({src, volume = 0.08}) => (
+export const Sfx: React.FC<{src: string; volume?: number}> = ({src, volume = 0.08}) => (
   <Audio src={staticFile(`sfx/${src}`)} volume={volume} />
 );
 
@@ -168,7 +195,35 @@ function Timed<T extends {start: number; dur?: number}>(
 }
 
 // ============ MAIN ============
+// Painel de vidro em janelas. Idêntico ao shortform: enquanto ativo a canvas
+// desenha a footage, então a base 2D não se aplica ali.
+const GlassLayer: React.FC<{spec: GlassBlock}> = ({spec}) => {
+  const {fps} = useVideoConfig();
+  const wins = spec.windows?.length ? spec.windows : [{start: 0, end: Infinity}];
+  return (
+    <>
+      {wins.map((w, i) => {
+        const from = Math.round(w.start * fps);
+        const dur = Number.isFinite(w.end)
+          ? Math.max(1, Math.round((w.end - w.start) * fps))
+          : undefined;
+        return (
+          <Sequence key={i} from={from} durationInFrames={dur} layout="none">
+            <AbsoluteFill>
+              <GlassPanel spec={spec} />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
+
 export const Main: React.FC = () => {
+  const shaderCuts = ((editData as {transitions?: ShaderCut[]}).transitions ?? []).filter(
+    (t): t is ShaderCut =>
+      Boolean(t) && (SHADER_CUT_TYPES as readonly string[]).includes(t.type as string),
+  );
   return (
     <AbsoluteFill style={{backgroundColor: 'black'}}>
       {D.soundtrack.enabled ? <Soundtrack /> : null}
@@ -176,6 +231,11 @@ export const Main: React.FC = () => {
       {Timed(D.broll, 4, (it, d) => <BrollEl item={it} totalFrames={d} />)}
       {Timed(D.chapters, 2.4, (it, d) => <ChapterCard title={it.title} totalFrames={d} />)}
       {Timed(D.lowerThirds, 4, (it, d) => <LowerThird item={it} totalFrames={d} />)}
+      {D.glass?.enabled ? <GlassLayer spec={D.glass} /> : null}
+      {D.tracked?.enabled && trackedData ? (
+        <TrackedScene spec={D.tracked} data={trackedData} />
+      ) : null}
+      <ShaderTransitions items={shaderCuts} energy={D.direction?.energy} />
       {Timed(D.callouts, 3, (it, d) => <CalloutEl item={it} totalFrames={d} />)}
     </AbsoluteFill>
   );

@@ -148,3 +148,20 @@ arquivo local — a Fase 3 funciona assim, só não compõe.
 
 A instalação não menciona nenhuma delas de propósito: o Prisma não precisa de
 chave para funcionar, e listar chaves no primeiro contato faz parecer que precisa.
+
+## Camadas VFX (as mesmas do shortform)
+
+O template horizontal tem `glass`, `transitions` (`displace`/`refract`),
+`tracked` e `direction.energy` — os mesmos blocos do `edit-data.json` vertical,
+com os mesmos componentes. Eles não sabem o aspecto do vídeo: o `rect` do vidro
+é 0..1 e o camera solve trabalha no espaço do mundo.
+
+**O que muda no horizontal é o ENQUADRAMENTO, não o código.** Um painel que
+ocupa 76% da largura em 9:16 fica desproporcional em 16:9 — ali ele quer um
+terço da tela, deixando espaço para o falante. Verificado com
+`rect: {x: 0.06, y: 0.24, w: 0.40, h: 0.52}`, que é o painel encostado à
+esquerda com o apresentador livre à direita.
+
+Custo e regras idênticos ao vertical — ver `references/shortform.md` para as
+seções "Painel de vidro", "Transição com distorção" e "Camera solve 3D".
+`render_phase2.py` detecta o bloco 3D e passa `--gl=angle` sozinho.
