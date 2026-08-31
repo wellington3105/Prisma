@@ -26,6 +26,6 @@ sparse/
 assets/models/*.tflite
 assets/models/*.bin
 
-# Backup pré-renomeação Edvid→Prisma, mantido fora do histórico por ser
-# duplicata morta do que já está versionado.
+# Backups locais de helpers. Não versionar: o histórico do git cumpre esse
+# papel melhor, e uma duplicata em disco envelhece em silêncio.
 helpers.bak.*/
