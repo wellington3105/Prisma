@@ -39,15 +39,40 @@ export type TrackedData = {
   poses: Record<string, Pose>;
 };
 
+/** Posição: coordenada crua OU referência a um plano detectado. */
+type Placement = {
+  /** Coordenada no mundo reconstruído. Ignorada quando `onPlane` existe. */
+  at?: [number, number, number];
+  /** Índice em `tracked.planes` — o objeto assenta nesta superfície. */
+  onPlane?: number;
+  /** Deslocamento a partir do centro do plano, nos eixos do mundo. */
+  offset?: [number, number, number];
+  /** Afastamento ao longo da normal, para não brigar com a superfície. */
+  lift?: number;
+  /** Rotação em graus. Sem isto e com `onPlane`, vem da orientação do plano. */
+  rotation?: [number, number, number];
+};
+
 export type TrackedObject =
-  | {kind: 'box'; at: [number, number, number]; size?: number; color?: string}
-  | {kind: 'panel'; at: [number, number, number]; w?: number; h?: number; color?: string; opacity?: number}
-  | {kind: 'text'; at: [number, number, number]; text: string; size?: number; color?: string};
+  | (Placement & {kind: 'box'; size?: number; color?: string})
+  | (Placement & {kind: 'panel'; w?: number; h?: number; color?: string; opacity?: number})
+  | (Placement & {kind: 'text'; text: string; size?: number; color?: string});
+
+export type Plane = {
+  normal: [number, number, number];
+  center: [number, number, number];
+  orientation: string;
+  rotation_deg: [number, number, number];
+  size: [number, number];
+};
 
 export type TrackedBlock = {
   enabled: boolean;
   /** Arquivo em public/, saída de camera_solve_colmap.py. */
   data: string;
+  /** Planos de detect_plane.py. Com isto, um objeto pode dizer
+   *  `onPlane: 0` em vez de três coordenadas escolhidas às cegas. */
+  planes?: Plane[];
   /** Frame do vídeo em que o frame 0 do solve começa. */
   offset?: number;
   objects: TrackedObject[];
@@ -80,10 +105,39 @@ const poseToThree = (p: Pose) => {
   return {pos, quat};
 };
 
-const Obj: React.FC<{o: TrackedObject}> = ({o}) => {
+/**
+ * Resolve a posição de um objeto: coordenada explícita ou "sobre o plano N".
+ *
+ * Escolher três números no espaço reconstruído é adivinhação — as unidades não
+ * são metros e a origem cai onde o par inicial calhou de estar. `onPlane` troca
+ * isso por uma referência à geometria que o solve já encontrou, e traz a
+ * rotação junto: um objeto sobre a mesa deve estar DEITADO nela.
+ */
+const resolvePlacement = (o: TrackedObject, planes?: Plane[]) => {
+  if (o.onPlane === undefined || !planes?.length) {
+    return {at: o.at ?? ([0, 0, 0] as [number, number, number]), rot: o.rotation};
+  }
+  const p = planes[Math.min(o.onPlane, planes.length - 1)];
+  const [ox, oy, oz] = o.offset ?? [0, 0, 0];
+  // Deslocamento ao longo da normal separa o objeto da superfície: um plano
+  // com espessura zero e um objeto exatamente sobre ele brigam por z-fighting.
+  const lift = o.lift ?? 0.02;
+  return {
+    at: [
+      p.center[0] + p.normal[0] * lift + ox,
+      p.center[1] + p.normal[1] * lift + oy,
+      p.center[2] + p.normal[2] * lift + oz,
+    ] as [number, number, number],
+    rot: o.rotation ?? p.rotation_deg,
+  };
+};
+
+const Obj: React.FC<{o: TrackedObject; planes?: Plane[]}> = ({o, planes}) => {
+  const {at, rot} = resolvePlacement(o, planes);
+  const rotation = (rot ?? [0, 0, 0]).map((d) => (d * Math.PI) / 180) as [number, number, number];
   if (o.kind === 'panel') {
     return (
-      <mesh position={o.at}>
+      <mesh position={at} rotation={rotation}>
         <planeGeometry args={[o.w ?? 1, o.h ?? 0.6]} />
         <meshBasicMaterial
           color={o.color ?? '#7fd4ff'}
@@ -98,14 +152,14 @@ const Obj: React.FC<{o: TrackedObject}> = ({o}) => {
     // Sem carregar fonte 3D: um plano com a cor do texto marca a posição.
     // Tipografia de verdade é a story G5; aqui o que importa é a ÂNCORA.
     return (
-      <mesh position={o.at}>
+      <mesh position={at} rotation={rotation}>
         <planeGeometry args={[(o.size ?? 0.5) * o.text.length * 0.5, o.size ?? 0.5]} />
         <meshBasicMaterial color={o.color ?? '#ffd400'} transparent opacity={0.9} />
       </mesh>
     );
   }
   return (
-    <mesh position={o.at}>
+    <mesh position={at} rotation={rotation}>
       <boxGeometry args={[o.size ?? 0.4, o.size ?? 0.4, o.size ?? 0.4]} />
       <meshBasicMaterial color={o.color ?? '#ff7a1a'} />
     </mesh>
@@ -144,10 +198,11 @@ const Backdrop: React.FC<{tex: THREE.Texture}> = ({tex}) => {
   return null;
 };
 
-const Rig: React.FC<{data: TrackedData; objects: TrackedObject[]; offset: number}> = ({
+const Rig: React.FC<{data: TrackedData; objects: TrackedObject[]; offset: number; planes?: Plane[]}> = ({
   data,
   objects,
   offset,
+  planes,
 }) => {
   const frame = useCurrentFrame();
   const {width, height} = useVideoConfig();
@@ -197,7 +252,7 @@ const Rig: React.FC<{data: TrackedData; objects: TrackedObject[]; offset: number
   return (
     <>
       {objects.map((o, i) => (
-        <Obj key={i} o={o} />
+        <Obj key={i} o={o} planes={planes} />
       ))}
     </>
   );
@@ -220,7 +275,7 @@ export const TrackedScene: React.FC<{spec: TrackedBlock; data: TrackedData}> = (
             <OffthreadVideo> irmão no DOM (mesma restrição do GlassPanel), e
             aqui ela precisa estar sob os objetos ancorados. */}
         <Backdrop tex={tex} />
-        <Rig data={data} objects={spec.objects} offset={spec.offset ?? 0} />
+        <Rig data={data} objects={spec.objects} offset={spec.offset ?? 0} planes={spec.planes} />
       </ThreeCanvas>
     </AbsoluteFill>
   );

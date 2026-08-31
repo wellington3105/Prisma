@@ -48,6 +48,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 MAX_REPROJ_PX = 2.0      # acima disto a pose não serve para ancorar
 MIN_REG_RATIO = 0.80     # fração mínima de frames registrados
+MAX_CLOUD_POINTS = 2000  # nuvem exportada para detecção de plano
 
 
 def extract_frames(video: Path, out_dir: Path, start: float, end: float | None) -> int:
@@ -124,6 +125,12 @@ def solve(video: Path, start: float, end: float | None,
             "t": [float(x) for x in p.translation],
         }
 
+    # Nuvem esparsa, para detecção de plano (C6). Os pontos mais bem
+    # reconstruídos primeiro — um ponto com erro alto polui o ajuste de plano
+    # mais do que ajuda, e 2000 bastam de sobra para um RANSAC.
+    pts = sorted(best.points3D.items(), key=lambda kv: kv[1].error)[:MAX_CLOUD_POINTS]
+    cloud = [[round(float(v), 4) for v in p.xyz] for _, p in pts]
+
     cam = next(iter(best.cameras.values()))
     params = list(map(float, cam.params))
     ok = reproj <= MAX_REPROJ_PX and ratio >= MIN_REG_RATIO
@@ -148,6 +155,7 @@ def solve(video: Path, start: float, end: float | None,
         "intrinsics": {"model": str(cam.model), "params": params,
                        "width": cam.width, "height": cam.height},
         "poses": poses,
+        "cloud": cloud,
     }
 
 

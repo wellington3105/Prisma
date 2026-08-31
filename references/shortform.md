@@ -327,6 +327,30 @@ Com `camera.json` em `public/`, o bloco `tracked` posiciona objetos
   extensão da trajetória no `camera.json`.
 - **`offset`** — frame do vídeo em que o frame 0 do solve começa.
 
+**Melhor que escolher coordenadas: deixe o sistema achar a superfície.**
+
+```bash
+uv run python helpers/detect_plane.py camera.json --out planes.json
+```
+
+Copie `planes` para dentro do bloco `tracked` e o objeto passa a dizer onde
+assenta, não em que coordenada fica:
+
+```json
+"tracked": {
+  "enabled": true, "data": "camera.json", "planes": [ ...de planes.json... ],
+  "objects": [{"kind": "panel", "onPlane": 0, "lift": 0.05, "offset": [0.3, 0, 0]}]
+}
+```
+
+`onPlane` traz a **rotação junto** — um objeto sobre a mesa nasce deitado nela.
+`lift` o afasta da superfície (senão brigam por z-fighting) e `offset` o desloca
+a partir do centro do plano.
+
+Cada plano vem classificado como `horizontal` (mesa, chão), `vertical` (parede)
+ou `inclinado`, com quantos pontos o sustentam — um plano com 40% da nuvem é
+uma superfície real; um com 3% é ruído.
+
 **Duas coisas que fazem a diferença entre funcionar e não funcionar:**
 
 1. **A câmera precisa manter o alvo em quadro.** Medido no material de teste: a
