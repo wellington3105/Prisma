@@ -21,7 +21,7 @@
  */
 import React, {useMemo} from 'react';
 import * as THREE from 'three';
-import {useThree, useFrame} from '@react-three/fiber';
+import {useThree, useFrame, useLoader} from '@react-three/fiber';
 import {ThreeCanvas, useOffthreadVideoTexture} from '@remotion/three';
 import {GlassSlab} from './GlassSlab';
 import {
@@ -58,6 +58,10 @@ export type TrackedObject =
   | (Placement & {kind: 'box'; size?: number; color?: string})
   | (Placement & {kind: 'panel'; w?: number; h?: number; color?: string; opacity?: number})
   | (Placement & {kind: 'text'; text: string; size?: number; color?: string})
+  // Cartão de dados: um PNG de helpers/make_card.py ancorado num plano. É o
+  // caminho para texto na cena enquanto a tipografia 3D está bloqueada — o
+  // troika não constrói glifos no render headless.
+  | (Placement & {kind: 'card'; src: string; w?: number; h?: number; opacity?: number})
   // O painel de vidro da referência: curvo, com borda luminosa, e ANCORADO —
   // acompanha a cena em perspectiva em vez de ficar colado ao quadro.
   | (Placement & {
@@ -144,6 +148,56 @@ const resolvePlacement = (o: TrackedObject, planes?: Plane[]) => {
   };
 };
 
+/**
+ * Cartão de dados como textura num plano.
+ *
+ * Componente separado porque `useLoader` é um hook — chamá-lo dentro do `Obj`,
+ * depois dos `if` de tipo, quebraria as regras do React: a ordem dos hooks
+ * mudaria conforme o `kind` do objeto.
+ *
+ * A proporção do plano vem do PNG (640x400 = 1.6:1), então informar só `w`
+ * mantém o cartão sem distorção — pedir os dois é convite a esticá-lo.
+ */
+const Card: React.FC<{
+  o: Extract<TrackedObject, {kind: 'card'}>;
+  at: [number, number, number];
+  rotation: [number, number, number];
+}> = ({o, at, rotation}) => {
+  const tex = useLoader(THREE.TextureLoader, staticFile(o.src));
+  const w = o.w ?? 0.9;
+  const h = o.h ?? (w * tex.image.height) / tex.image.width;
+
+  // Espelhar em Y, e SÓ em Y. A conversão COLMAP→Three é uma rotação de 180°
+  // em X aplicada à câmera: ela inverte o sentido vertical e preserva o
+  // horizontal. Uma forma simétrica não denuncia isso; uma textura com texto
+  // sim — os cartões saíram espelhados, depois de cabeça para baixo, até eu
+  // parar de adivinhar e MEDIR: projetei um ponto a +X e outro a +Y do centro
+  // do cartão pela mesma câmera e vi onde caíam na tela (+X à direita: não
+  // espelhar; +Y abaixo: espelhar).
+  //
+  // Corrigir na TEXTURA e não na malha mantém âncora e perspectiva intactas —
+  // só o conteúdo é refletido de volta.
+  useMemo(() => {
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.y = -1;
+    tex.offset.y = 1;
+    tex.needsUpdate = true;
+  }, [tex]);
+  return (
+    <mesh position={at} rotation={rotation}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial
+        map={tex}
+        transparent
+        opacity={o.opacity ?? 1}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+};
+
 const Obj: React.FC<{o: TrackedObject; planes?: Plane[]}> = ({o, planes}) => {
   const {at, rot} = resolvePlacement(o, planes);
   const rotation = (rot ?? [0, 0, 0]).map((d) => (d * Math.PI) / 180) as [number, number, number];
@@ -164,6 +218,9 @@ const Obj: React.FC<{o: TrackedObject; planes?: Plane[]}> = ({o, planes}) => {
         }}
       />
     );
+  }
+  if (o.kind === 'card') {
+    return <Card o={o} at={at} rotation={rotation} />;
   }
   if (o.kind === 'panel') {
     return (

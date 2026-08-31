@@ -359,6 +359,27 @@ Vários painéis em ângulos diferentes compõem o quadro — é assim que a
 referência preenche a cena. `curve` abaula levemente (0 = plano, 0.1 = muito),
 `tint` colore o vidro, `edge` a moldura.
 
+**Cartões de dados** (`kind: "card"`) são os elementos com número e rótulo que
+a referência espalha pelo ambiente — "62%", "2.4K", "Squats". Gere o PNG e
+ancore como qualquer objeto:
+
+```bash
+uv run python helpers/make_card.py "62%" --label "conversão" --out public/card1.png
+uv run python helpers/make_card.py "2.4K" --label "seguidores" --accent "#ffd400" --dark
+```
+
+```json
+{"kind": "card", "src": "card1.png", "at": [-2.3, -1.2, 3.9], "rotation": [0, 22, 0], "w": 1.5}
+```
+
+Informe só `w` — a altura vem da proporção do PNG, e pedir as duas é convite a
+esticar o cartão. `--dark` para cenas claras; `--accent` colore a borda e o
+rótulo. O tamanho do texto ajusta-se sozinho à largura do cartão.
+
+**Por que PNG e não texto 3D:** a tipografia 3D via `troika-three-text` está
+bloqueada — o Web Worker que gera SDF não conclui no render headless. Um cartão
+rasterizado ancorado tem a mesma perspectiva e a mesma âncora.
+
 **Não confundir com `glass` no topo do `edit-data.json`**: aquele é um painel
 colado ao quadro, com refração da footage. Este vive no espaço 3D e acompanha
 a perspectiva, mas não amostra o que está atrás — um shader dentro da cena não
