@@ -264,7 +264,8 @@ existe para não desperdiçar o segundo:
 
 ```bash
 # 0) ACHE a janela primeiro — segundos, e evita perder 2min no solve errado.
-uv run python helpers/camera_track.py <video> --scan 2
+#    Com --transcript ele exige FALA na janela, não só movimento.
+uv run python helpers/camera_track.py <video> --scan 2 --transcript transcripts/cut.json
 
 # 1) gate na janela escolhida. Recusa cena sem textura ou sem paralaxe.
 uv run python helpers/camera_track.py <video> --start 1.5 --end 3.5
@@ -272,6 +273,12 @@ uv run python helpers/camera_track.py <video> --start 1.5 --end 3.5
 # 2) solve — ~2min por 1.5s de clipe. Só rode se o gate aprovou.
 uv run python helpers/camera_solve_colmap.py <video> --start 12 --end 15 --out camera.json
 ```
+
+**Passe o `--transcript` junto.** O solve e a narração competem: a câmera se
+move quando o apresentador caminha, e ele costuma falar parado. Medido no clipe
+de teste — a melhor janela de MOVIMENTO (1.5–3.5s) tinha **zero palavras**, e
+montar a Fase 2 ali daria um vídeo mudo. Cruzando os dois critérios, o scan
+achou 9.0–11.0s com 7 palavras, e o solve deu **60/60 frames a 1.07px**.
 
 **Comece pelo `--scan`.** Escolher a janela a olho falha em silêncio: num clipe
 de teste a paralaxe MEDIANA era 6.92px — folgada — mas os primeiros 1.5s estavam

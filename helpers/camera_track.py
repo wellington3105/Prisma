@@ -263,7 +263,28 @@ def render_debug(video: Path, data: dict, out: Path, start: float) -> None:
     vw.release()
 
 
-def scan(video: Path, win: float, passo: float = 0.5) -> dict:
+def _fala_por_janela(transcript: Path | None, ini: float, fim: float) -> int:
+    """Quantas palavras são ditas nesta janela.
+
+    O solve e a narração competem: a câmera se move quando o apresentador
+    caminha, e ele costuma falar parado. Medido no clipe de teste — a melhor
+    janela de movimento (1.5–3.5s) tinha **zero palavras**, e montar a Fase 2
+    ali daria um vídeo mudo. Cruzar os dois critérios achou 4.0–6.0s, com
+    60/60 frames a 1.10px E fala.
+    """
+    if not transcript or not transcript.exists():
+        return -1  # sem transcrição: não é critério, e o scan não deve fingir
+    try:
+        d = json.loads(transcript.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return -1
+    return sum(1 for w in d.get("words", [])
+               if w.get("text", "").strip()
+               and ini <= float(w.get("start", -1)) < fim)
+
+
+def scan(video: Path, win: float, passo: float = 0.5,
+         transcript: Path | None = None) -> dict:
     """Varre o vídeo e devolve a melhor janela de `win` segundos para o solve.
 
     Existe porque escolher a janela a olho falha em silêncio: no clipe de
@@ -271,8 +292,11 @@ def scan(video: Path, win: float, passo: float = 0.5) -> dict:
     1.5s estavam parados, e o solve registrou 4 de 60 frames. Deslocada em 1.5s,
     a MESMA filmagem deu 59/60 a 1.27px.
 
-    O critério é a cauda, não o centro: janela sem frames parados, ordenada pelo
-    p10 da paralaxe.
+    Dois critérios, e o segundo só existe porque o primeiro sozinho enganou:
+      - **movimento**: janela sem frames parados, ordenada pelo p10 da paralaxe;
+      - **fala** (com `--transcript`): a janela mais móvel do clipe de teste não
+        tinha palavra nenhuma. Uma janela boa para o solve e ruim para o vídeo
+        não é uma janela boa.
     """
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
@@ -319,23 +343,42 @@ def scan(video: Path, win: float, passo: float = 0.5) -> dict:
                 "p10": round(float(np.percentile(w[:, 1], 10)), 2),
                 "min": round(float(w[:, 1].min()), 2),
                 "parados": parados,
+                "palavras": _fala_por_janela(transcript, t, t + win),
             })
         t += passo
 
     limpas = [c for c in cands if c["parados"] == 0]
-    limpas.sort(key=lambda c: -c["p10"])
     if not limpas:
-        melhor = sorted(cands, key=lambda c: c["parados"])[:1]
         return {
             "ok": False,
             "reason": f"nenhuma janela de {win}s sem frames parados neste vídeo",
-            "melhores": melhor,
+            "melhores": sorted(cands, key=lambda c: c["parados"])[:1],
         }
+
+    com_fala = [c for c in limpas if c["palavras"] > 0]
+    tem_transcript = any(c["palavras"] >= 0 for c in limpas)
+
+    if tem_transcript and not com_fala:
+        # Vale dizer em vez de devolver silenciosamente uma janela muda.
+        limpas.sort(key=lambda c: -c["p10"])
+        return {
+            "ok": False,
+            "reason": (f"as {len(limpas)} janelas com movimento não têm fala. "
+                       f"A câmera se move quando o apresentador caminha, e ele "
+                       f"fala parado — grave um trecho andando E falando"),
+            "melhores": limpas[:3],
+        }
+
+    escolhidas = com_fala or limpas
+    # Ordena por fala primeiro: um p10 alto numa janela muda não serve para nada.
+    escolhidas.sort(key=lambda c: (-c["palavras"], -c["p10"]))
     return {
         "ok": True,
-        "reason": f"{len(limpas)} janela(s) de {win}s sem frames parados",
-        "best": limpas[0],
-        "alternativas": limpas[1:4],
+        "reason": (f"{len(escolhidas)} janela(s) de {win}s sem frames parados"
+                   + (" e com fala" if com_fala else
+                      " (sem --transcript: fala não foi considerada)")),
+        "best": escolhidas[0],
+        "alternativas": escolhidas[1:4],
     }
 
 
@@ -353,10 +396,16 @@ def main() -> None:
                     help="acha a melhor janela deste tamanho para o solve, em "
                          "vez de rastrear. Faça isto ANTES de gastar minutos no "
                          "camera_solve_colmap.py")
+    ap.add_argument("--transcript", type=Path, default=None,
+                    help="transcripts/cut.json — com isto o --scan também exige "
+                         "FALA na janela, não só movimento")
     args = ap.parse_args()
 
     if args.scan:
-        print(json.dumps(scan(Path(args.video), args.scan), ensure_ascii=False, indent=1))
+        r = scan(Path(args.video), args.scan, transcript=args.transcript)
+        print(json.dumps(r, ensure_ascii=False, indent=1))
+        if not r.get("ok"):
+            sys.exit(2)
         return
 
     m = track(Path(args.video), args.start, args.end, args.max_frames)
