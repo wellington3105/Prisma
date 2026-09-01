@@ -158,6 +158,15 @@ style does, and a chat list of names asks them to choose blind. Set
 `"awaitingStyle": true` in `state.json`; the UI opens its own tab and
 `watch_edits.py` notifies you when they save `<edit>/preview_style.json`.
 
+**READ the picks — never state them from memory.** Run
+`watch_edits.py <edit>` (or read `preview_style.json`) and quote what it
+returns. What you clicked while demonstrating the UI, what you proposed
+earlier, or what you assume is a sensible default are all different from what
+the user actually chose. This has already gone wrong once: four elements were
+reported when eight were ticked, because the interface was read from an earlier
+screenshot instead of from the file. The file is the only source of truth, and
+it costs one command.
+
 The catalog of options and what each pick means is in the track reference, which
 you read next anyway — **`references/shortform.md`** or **`references/longform.md`**.
 
@@ -439,6 +448,10 @@ starts sounding like a different microphone.
 ---
 
 # PHASE 2 + 3 — read the track reference (after the gate)
+
+**First, re-read `preview_style.json`** — the picks drive every decision below,
+and building from memory means building the wrong video. Every element in the
+`fora` list is an instruction too: it is what must stay OUT.
 
 The cut is approved and the user picked the style in the UI (`preview_style.json`)
 → load **one** file and build exactly what was picked:
