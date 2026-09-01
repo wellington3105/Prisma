@@ -999,3 +999,44 @@ arquivo local — a Fase 3 funciona assim, só não compõe.
 
 A instalação não menciona nenhuma delas de propósito: o Prisma não precisa de
 chave para funcionar, e listar chaves no primeiro contato faz parecer que precisa.
+
+## Ritmo e camadas — a doutrina de montagem
+
+O catálogo completo está em `.omc/research/prisma-edicao-2026-09-01/catalogo.md`.
+O essencial, com os helpers que o executam:
+
+### As três camadas de informação
+
+| Camada | Função | Cadência | Helper |
+|---|---|---|---|
+| Legenda | acompanha TODA a fala | contínua | `captions_for_remotion.py` |
+| Card de destaque | isola a palavra-chave | 1 a cada 8–15s | `highlight_words.py` |
+| B-roll | mostra o significado | 2–4s por inserção | `broll_plan.py` |
+
+**A regra que as organiza: texto REFORÇA, não duplica.** O card não repete a
+legenda — diz o que a palavra significa. `movimento` na legenda vira
+"CÂMERA EM MOVIMENTO" no card. Se os dois mostram o mesmo termo, um é ruído.
+
+### Pausa assimétrica
+
+`build_edl.py` monta o corte preservando a pausa que **prepara** algo:
+
+- rotina → apara para **0.18s**
+- antes de número, nome próprio ou substantivo longo → preserva **0.45s**
+
+*"Cortar rápido demais antes de o cérebro registrar cria fadiga cognitiva."*
+A pausa antes do ponto é ferramenta.
+
+### B-roll cobre a emenda
+
+`broll_plan.py` põe a cobertura **nos pontos onde os blocos se juntam** —
+aparar pausas produz jump cuts, e o B-roll os esconde. Entra 0.4s antes do
+corte, para já estar na tela quando ele acontece. Nunca cobre a última emenda:
+o fecho é do apresentador (padrão rosto → cobertura → rosto).
+
+### Excesso de camadas
+
+`render_phase2.py` avisa acima de **4 camadas visuais simultâneas**. O efeito
+funciona por contraste com o sóbrio — *"se um elemento desliza, outro gira e
+outro dá glitch, o estilo vira a mensagem"*.
+

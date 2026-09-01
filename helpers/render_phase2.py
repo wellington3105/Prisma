@@ -27,6 +27,10 @@ import subprocess
 import sys
 
 FPS_DEFAULT = 30
+# Camadas visuais simultâneas toleradas. 4 dá margem sobre o "1-3 elementos"
+# da literatura de glassmorphism, porque nem toda camada aqui é vidro — mas
+# nove, que foi o caso reprovado, está fora de qualquer leitura.
+MAX_CAMADAS = 4
 
 
 def run(cmd, cwd=None, label=""):
@@ -85,6 +89,33 @@ def check_direction(ed: dict) -> list[str]:
     """
     avisos: list[str] = []
     trs = [t for t in (ed.get("transitions") or []) if isinstance(t, dict)]
+
+    # --- excesso de camadas -------------------------------------------------
+    # Duas literaturas independentes convergem: "reserve o vidro para 1-3
+    # elementos por tela" (glassmorphism) e "se um elemento desliza, outro gira
+    # e outro dá glitch, o estilo vira a mensagem" (motion graphics). O efeito
+    # funciona por CONTRASTE com o sóbrio.
+    #
+    # Este aviso existe porque o gate permitiu marcar nove elementos de uma vez,
+    # e o vídeo resultante foi reprovado. A UI oferece as opções; ninguém dizia
+    # que somá-las todas é o erro que a literatura descreve.
+    pesadas = [
+        ("glass", bool((ed.get("glass") or {}).get("enabled"))),
+        ("tracked", bool((ed.get("tracked") or {}).get("enabled"))),
+        ("highlights", bool((ed.get("highlights") or {}).get("enabled"))),
+        ("text3d", bool((ed.get("text3d") or {}).get("enabled"))),
+        ("inserts", bool(ed.get("inserts"))),
+        ("shader cuts", any(t.get("type") in ("displace", "refract") for t in trs)),
+        ("transições overlay", any(t.get("type") in (None, "flash", "whip-pan", "glitch")
+                                   for t in trs)),
+    ]
+    ligadas = [n for n, on in pesadas if on]
+    if len(ligadas) > MAX_CAMADAS:
+        avisos.append(
+            f"EXCESSO: {len(ligadas)} camadas visuais ao mesmo tempo "
+            f"({', '.join(ligadas)}). A doutrina pede {MAX_CAMADAS} ou menos — "
+            f"o efeito funciona por contraste com o sóbrio, e somar tudo faz o "
+            f"estilo virar a mensagem. Ver references/direction.md")
 
     # --- D3 -----------------------------------------------------------------
     if len(trs) >= 3:
