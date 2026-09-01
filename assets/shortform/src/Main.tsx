@@ -34,6 +34,7 @@ import editData from '../public/edit-data.json';
 import {GlassPanel, type GlassSpec} from './GlassPanel';
 import {TrackedScene, type TrackedBlock, type TrackedData} from './TrackedScene';
 import {ShaderTransitions, type ShaderCut, type Energy} from './ShaderTransition';
+import {GlassCards, type HighlightBlock} from './GlassCard';
 import {CustomGraphics} from './CustomGraphics';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
@@ -129,6 +130,10 @@ export type EditData = {
   /** Objetos ancorados no espaço 3D da cena — gated por `elements.tracked3d`.
    *  Requer camera.json de helpers/camera_solve_colmap.py em public/. */
   tracked?: TrackedBlock;
+  /** Palavras-chave destacadas em card de vidro, na deixa em que são ditas.
+   *  A segunda camada de informação, entre a legenda e o B-roll.
+   *  Gated por `elements.glassCard`. */
+  highlights?: HighlightBlock;
 };
 
 type GlassBlock = GlassSpec & {
@@ -818,6 +823,7 @@ export const Main: React.FC = () => {
           One list in edit-data.json, two renderers, no duplicated timing. */}
       <ShaderTransitions items={shaderCuts} energy={D.direction?.energy} />
       <CustomGraphics />
+      {D.highlights?.enabled ? <GlassCards spec={D.highlights} /> : null}
       {D.hook.enabled ? <HookIntro /> : null}
       {D.captions.enabled
         ? D.captions.style === 'stacked'
