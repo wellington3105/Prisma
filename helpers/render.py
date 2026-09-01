@@ -529,7 +529,15 @@ def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -
 # would eventually decapitate a word on footage whose take ends tight — so the trim
 # is capped by the silence actually present at the end of that range, keeping 10ms.
 
-JCUT_LEAD_FRAMES = 5
+# 16 frames a 30fps = ~530ms. O valor anterior era 5 frames (~165ms), e a
+# literatura de montagem é explícita: um J-cut de 4 frames "confunde mais do que
+# ajuda", e o mínimo útil é meio segundo. Abaixo disso o espectador não percebe
+# a antecipação do áudio — só sente o corte estranho, sem saber por quê.
+#
+# O teto é 1–2s; acima de 3s começa a estranhar por que o som não bate com a
+# imagem. 16f fica na entrada da faixa útil, que é o certo para um DEFAULT: o
+# J-cut deve ler como acabamento, não como efeito.
+JCUT_LEAD_FRAMES = 16
 JCUT_TAIL_TRIM_FRAMES = 2
 
 
