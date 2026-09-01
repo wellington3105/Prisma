@@ -62,6 +62,8 @@ MIN_FEATURES = 80        # features vivas por frame, mediana
 MIN_TRACK_LEN = 8        # frames que uma trilha precisa durar
 MIN_TRACKS = 40          # trilhas longas o bastante
 MIN_PARALLAX_PX = 1.2    # desvio-padrão do movimento relativo, em px
+STILL_PX = 1.0           # abaixo disto o frame não contribui com baseline
+MAX_STILL_RATIO = 0.05   # fração tolerada de frames parados na janela
 RESEED_BELOW = 250       # re-semeia quando o rastro rala
 
 
@@ -157,6 +159,7 @@ def track(video: Path, start: float = 0.0, end: float | None = None,
     long_tracks = [t for t in tracks if len(t) >= MIN_TRACK_LEN]
     med_alive = float(np.median(per_frame_alive)) if per_frame_alive else 0.0
     med_parallax = float(np.median(parallax)) if parallax else 0.0
+    parados = int(sum(1 for p in parallax if p < STILL_PX))
 
     return {
         "fps": fps, "width": w, "height": h,
@@ -165,6 +168,8 @@ def track(video: Path, start: float = 0.0, end: float | None = None,
         "tracks_total": len(tracks),
         "tracks_long": len(long_tracks),
         "parallax_px": med_parallax,
+        "frames_parados": parados,
+        "parallax_p10": float(np.percentile(parallax, 10)) if parallax else 0.0,
         "tracks": [
             [[f, round(x, 2), round(y, 2)] for f, x, y in t] for t in long_tracks
         ],
@@ -191,6 +196,21 @@ def gate(m: dict) -> tuple[bool, str]:
             f"sem paralaxe — movimento relativo de {m['parallax_px']:.2f}px "
             f"(mínimo {MIN_PARALLAX_PX}). A câmera gira mas não translada: sem "
             f"baseline não existe profundidade para resolver, em nenhum algoritmo"
+        )
+    # A MEDIANA passa e o solve morre assim mesmo quando há um trecho parado
+    # dentro da janela: o COLMAP precisa de baseline em CADA par de frames, não
+    # em média. Medido no clipe de demonstração: mediana 6.92px — folgada — e
+    # ainda assim 4 de 60 frames registrados, porque os primeiros 1.5s tinham
+    # paralaxe de 0.02px. Deslocar a janela em 1.5s deu 59/60 a 1.27px.
+    #
+    # É por isso que o teste é sobre a CAUDA, não sobre o centro.
+    parados = m.get("frames_parados", 0)
+    if parados > m["frames"] * MAX_STILL_RATIO:
+        return False, (
+            f"{parados} de {m['frames']} frames sem movimento "
+            f"({parados / m['frames'] * 100:.0f}%, limite {MAX_STILL_RATIO * 100:.0f}%). "
+            f"A janela contém um trecho parado — o solve precisa de baseline em "
+            f"cada par de frames, não em média. Use --scan para achar a melhor janela"
         )
     return True, "cena adequada para camera solve"
 
@@ -243,6 +263,82 @@ def render_debug(video: Path, data: dict, out: Path, start: float) -> None:
     vw.release()
 
 
+def scan(video: Path, win: float, passo: float = 0.5) -> dict:
+    """Varre o vídeo e devolve a melhor janela de `win` segundos para o solve.
+
+    Existe porque escolher a janela a olho falha em silêncio: no clipe de
+    demonstração a mediana de paralaxe era 6.92px — folgada — mas os primeiros
+    1.5s estavam parados, e o solve registrou 4 de 60 frames. Deslocada em 1.5s,
+    a MESMA filmagem deu 59/60 a 1.27px.
+
+    O critério é a cauda, não o centro: janela sem frames parados, ordenada pelo
+    p10 da paralaxe.
+    """
+    cap = cv2.VideoCapture(str(video))
+    if not cap.isOpened():
+        raise SystemExit(f"não consegui abrir {video}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    ok, prev = cap.read()
+    if not ok:
+        raise SystemExit("vídeo sem frames legíveis")
+
+    g0 = cv2.cvtColor(prev, cv2.COLOR_BGR2GRAY)
+    p0 = _reseed(g0)
+    serie: list[tuple[float, float]] = []
+    n = 0
+    while True:
+        ok, f = cap.read()
+        if not ok:
+            break
+        n += 1
+        g1 = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
+        if p0 is not None and len(p0) > 30:
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, p0, None, **LK)
+            if p1 is not None and st.sum() > 20:
+                good = st.ravel() == 1
+                d = (p1[good] - p0[good]).reshape(-1, 2)
+                serie.append((n / fps, float(np.hypot(d[:, 0], d[:, 1]).std())))
+        p0 = _reseed(g1)
+        g0 = g1
+    cap.release()
+
+    if not serie:
+        return {"ok": False, "reason": "não foi possível medir movimento"}
+
+    arr = np.asarray(serie)
+    dur = float(arr[-1, 0])
+    cands = []
+    t = 0.0
+    while t + win <= dur:
+        w = arr[(arr[:, 0] >= t) & (arr[:, 0] < t + win)]
+        if len(w) >= win * fps * 0.6:
+            parados = int((w[:, 1] < STILL_PX).sum())
+            cands.append({
+                "start": round(t, 2),
+                "end": round(t + win, 2),
+                "p10": round(float(np.percentile(w[:, 1], 10)), 2),
+                "min": round(float(w[:, 1].min()), 2),
+                "parados": parados,
+            })
+        t += passo
+
+    limpas = [c for c in cands if c["parados"] == 0]
+    limpas.sort(key=lambda c: -c["p10"])
+    if not limpas:
+        melhor = sorted(cands, key=lambda c: c["parados"])[:1]
+        return {
+            "ok": False,
+            "reason": f"nenhuma janela de {win}s sem frames parados neste vídeo",
+            "melhores": melhor,
+        }
+    return {
+        "ok": True,
+        "reason": f"{len(limpas)} janela(s) de {win}s sem frames parados",
+        "best": limpas[0],
+        "alternativas": limpas[1:4],
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("video")
@@ -253,7 +349,15 @@ def main() -> None:
     ap.add_argument("--debug-video", metavar="MP4",
                     help="grava o overlay de tracking (pontos verdes) para "
                          "inspeção visual da qualidade do rastreio")
+    ap.add_argument("--scan", type=float, metavar="SEGUNDOS", default=None,
+                    help="acha a melhor janela deste tamanho para o solve, em "
+                         "vez de rastrear. Faça isto ANTES de gastar minutos no "
+                         "camera_solve_colmap.py")
     args = ap.parse_args()
+
+    if args.scan:
+        print(json.dumps(scan(Path(args.video), args.scan), ensure_ascii=False, indent=1))
+        return
 
     m = track(Path(args.video), args.start, args.end, args.max_frames)
     ok, reason = gate(m) if "features_median" in m else (False, m.get("reason", "falhou"))

@@ -263,12 +263,21 @@ espaço da cena** em vez de flutuar sobre a imagem. Dois passos, e o primeiro
 existe para não desperdiçar o segundo:
 
 ```bash
-# 1) gate — segundos. Recusa cena sem textura ou sem paralaxe, com o motivo.
-uv run python helpers/camera_track.py <video> --start 12 --end 15
+# 0) ACHE a janela primeiro — segundos, e evita perder 2min no solve errado.
+uv run python helpers/camera_track.py <video> --scan 2
+
+# 1) gate na janela escolhida. Recusa cena sem textura ou sem paralaxe.
+uv run python helpers/camera_track.py <video> --start 1.5 --end 3.5
 
 # 2) solve — ~2min por 1.5s de clipe. Só rode se o gate aprovou.
 uv run python helpers/camera_solve_colmap.py <video> --start 12 --end 15 --out camera.json
 ```
+
+**Comece pelo `--scan`.** Escolher a janela a olho falha em silêncio: num clipe
+de teste a paralaxe MEDIANA era 6.92px — folgada — mas os primeiros 1.5s estavam
+parados, e o solve registrou **4 de 60 frames**. A mesma filmagem, deslocada em
+1.5s, deu **59/60 a 1.27px**. O que decide é a cauda, não o centro: o COLMAP
+precisa de baseline em cada par de frames.
 
 **O gate recusa e diz por quê.** "Sem paralaxe" significa que a câmera gira mas
 não translada — uma panorâmica no tripé não tem baseline, e nenhum algoritmo
