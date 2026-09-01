@@ -48,6 +48,7 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 |---|---|
 | `edit: "limpa"` | **the default** — NO split inserts, full frame throughout. See the "Limpa" section |
 | `edit: "split" \| "split2"` | the split-screen variant below — every image insert uses it |
+| `edit: "broll"` | **B-roll em tela cheia** — cada insert usa `fit: "cover"` e toma o quadro inteiro; o apresentador some enquanto roda. Ver a seção "B-roll em tela cheia" |
 | `headline: "outline" \| "card" \| "realce" \| "misto"` | `hook.style` in edit-data.json |
 | `headline: "none"` | **no headline at all** — `hook.enabled: false`. The template already gates on that flag, so nothing else changes |
 | `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica"` | `captions.style` in edit-data.json (+ the director step for stacked) |
@@ -671,6 +672,31 @@ transition means something. Optional per entry: `intensity` (default 1), `sfx`,
   re-mux discards Remotion's audio (it drifts), so add the SFX as another input
   with `adelay=<frame/fps*1000>`. The `<Sfx>` in the component only sounds in a
   plain `remotion render`.
+
+## Style: "B-roll em tela cheia" (`edit: "broll"`)
+
+O corte de cobertura clássico: a voz continua e a imagem troca por completo.
+Cada insert leva `fit: "cover"` e ocupa 1080×1920 — o apresentador **sai do
+quadro** enquanto o B-roll roda, ao contrário de "Tela dividida 2", que o
+mantém num canto.
+
+```json
+"inserts": [
+  {"src": "broll1.mp4", "start": 6.2, "end": 9.4, "fit": "cover",
+   "drift": {"from": 1.0, "to": 1.04}}
+]
+```
+
+- **Vídeo funciona tão bem quanto imagem** — `InsertCard` escolhe
+  `OffthreadVideo` ou `Img` pela extensão, e o vídeo entra mudo (o cut é dono
+  do áudio).
+- **Deixe `splitInserts` fora** do edit-data. Os dois estilos disputam o mesmo
+  espaço e o resultado é o insert sobre o split.
+- **Ken-Burns menor que no card**: o default full-frame é `1.0 → 1.04`, porque
+  os 8% que leem como suaves num card de 780px leem como empurrão a 1080 de
+  largura.
+- **Duração**: 2–4s por insert. Abaixo disso o espectador não reconhece a
+  imagem; acima, esquece quem estava falando.
 
 ## Style: "Limpa" (`edit: "limpa"`) — no split inserts
 

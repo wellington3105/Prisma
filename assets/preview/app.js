@@ -203,6 +203,25 @@ const STYLE_CATALOG = {
         ${MOCK_CAPTION(12, 58, 42)}
       </svg>`,
     },
+    {
+      id: 'broll',
+      // O terceiro amount of presence: o B-roll toma o quadro INTEIRO e o
+      // apresentador some enquanto ele roda. "Tela dividida 2" o mantém num
+      // canto; aqui ele sai. É o corte de cobertura clássico — a voz continua,
+      // a imagem troca por completo.
+      name: 'B-roll em tela cheia',
+      mock: (ls) => ls
+        ? `<svg viewBox="${MOCK_VB(true)}" xmlns="http://www.w3.org/2000/svg">
+        ${MOCK_FRAME(true)}
+        ${MOCK_ART(3, 3, 112, 60)}
+        ${MOCK_CAPTION(38, 47, 42)}
+      </svg>`
+        : `<svg viewBox="${MOCK_VB(false)}" xmlns="http://www.w3.org/2000/svg">
+        ${MOCK_FRAME(false)}
+        ${MOCK_ART(3, 3, 60, 112)}
+        ${MOCK_CAPTION(12, 74, 42)}
+      </svg>`,
+    },
   ],
   // No names on purpose: the sample headline IS the label. Ids and geometry
   // mirror HL_STYLES in the template's Main.tsx — keep the two in step.
