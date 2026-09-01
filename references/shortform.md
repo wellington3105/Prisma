@@ -69,8 +69,18 @@ An unchecked box is an explicit NO, not a silence. Copy the picks into
 
 1. **Scaffold (one command, never read the TSX):**
    ```bash
-   cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
+   uv run python helpers/scaffold_phase2.py <edit> --duration <segundos> --fps 30
+   cd <edit>/remotion && npm install
    ```
+   O helper copia o template **e escreve os arquivos de dados que o bundle
+   exige**: `segments.json` no formato `{start, dur}`, e `track.json`,
+   `caption-cues.json` e `captions.json` com a contagem certa para este vídeo.
+   Os três últimos são importados ESTATICAMENTE pelos TSX — sem eles o webpack
+   falha apontando para o componente, não para o dado. O template traz
+   placeholders vazios; o helper os substitui quando não servem.
+
+   Copiar com `cp -R` continua funcionando, mas foi assim que o primeiro teste
+   ponta a ponta quebrou três vezes seguidas por formato de arquivo.
 2. **Generate machine data into `remotion/public/`:**
    - `cp cut.mp4 remotion/public/`
    - `transcribe.py cut.mp4 --edit-dir <edit>` → `transcripts/cut.json`
