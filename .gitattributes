@@ -1,0 +1,34 @@
+# Fim de linha por tipo de arquivo.
+#
+# Existe por causa de um modo de falha concreto: um `install.sh` publicado com
+# CRLF morre no Linux e no macOS com "bad interpreter: /usr/bin/env sh^M" — o
+# shell le o \r como parte do nome do interpretador. O instalador e a primeira
+# coisa que alguem executa, entao esse erro seria a primeira impressao.
+#
+# `text=auto` deixa o git normalizar o resto para LF no repositorio,
+# convertendo para o padrao da plataforma no checkout.
+* text=auto
+
+# LF sempre, inclusive em checkout no Windows: sao lidos por interpretadores
+# que nao toleram CRLF (sh) ou por ferramentas que rodam em Linux.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+
+# CRLF sempre: o CMD do Windows precisa dele em arquivos de lote.
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binarios — nunca normalizar, senao corrompe.
+*.mp3   binary
+*.mp4   binary
+*.png   binary
+*.jpg   binary
+*.svg   text
+*.tflite binary
