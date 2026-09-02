@@ -20,10 +20,13 @@
 *.yaml  text eol=lf
 *.yml   text eol=lf
 
-# CRLF sempre: o CMD do Windows precisa dele em arquivos de lote.
-*.cmd   text eol=crlf
-*.bat   text eol=crlf
-*.ps1   text eol=crlf
+# CRLF gravado NO BLOB, nao so no checkout. O atributo `eol=crlf` converte na
+# saida do git, mas raw.githubusercontent.com serve o blob CRU — e e de la que
+# o instalador e baixado por `irm | iex`. `-text` desliga a normalizacao, entao
+# o byte gravado e o byte servido.
+*.cmd   -text
+*.bat   -text
+*.ps1   -text
 
 # Binarios — nunca normalizar, senao corrompe.
 *.mp3   binary
