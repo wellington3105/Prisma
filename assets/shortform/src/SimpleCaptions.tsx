@@ -147,7 +147,15 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
   const frame = useCurrentFrame();
   const {fps, durationInFrames} = useVideoConfig();
   const V = SIMPLE_VARIANTS[variant] ?? SIMPLE_VARIANTS.simples;
-  const cues = buildCues(captions as Word[], V);
+  // `as Word[]` e uma promessa ao compilador, nao uma verificacao: um
+// captions.json com a forma errada passa pelo cast e explode em runtime com
+// "words.forEach is not a function". Aconteceu numa instalacao limpa vinda do
+// GitHub — o scaffold gravava {captions: []} e o componente esperava array.
+//
+// O scaffold foi corrigido; esta guarda existe porque o render e caro e um
+// captions.json de outra ferramenta nao deveria derrubar o video inteiro.
+const CAPS: Word[] = Array.isArray(captions) ? (captions as Word[]) : [];
+const cues = buildCues(CAPS, V);
 
   let idx = -1;
   for (let i = 0; i < cues.length; i++) {

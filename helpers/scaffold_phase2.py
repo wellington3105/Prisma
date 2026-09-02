@@ -38,6 +38,20 @@ def _ler(p: Path) -> dict:
         return {}
 
 
+def _ler_lista(p: Path) -> list | None:
+    """A lista do arquivo, ou None se ausente/ilegível/não-lista.
+
+    Existe porque `_ler` normaliza qualquer coisa para dict, e `captions.json`
+    é um ARRAY — usar `_ler` nele devolveria `{}` mesmo com legendas válidas em
+    disco, e o scaffold sobrescreveria o trabalho da transcrição.
+    """
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, list) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def scaffold(edit: Path, dur: float, fps: int, width: int, height: int,
              track: str = "shortform", segments: list | None = None) -> list[str]:
     rem = edit / "remotion"
@@ -89,9 +103,20 @@ def scaffold(edit: Path, dur: float, fps: int, width: int, height: int,
         feito.append("caption-cues.json (vazio)")
 
     # captions.json — idem. captions_for_remotion.py o sobrescreve depois.
+    #
+    # ARRAY, não objeto. O formato é o do `@remotion/captions` e é o que
+    # `captions_for_remotion.py` grava; os componentes de legenda fazem
+    # `words.forEach` direto sobre ele. Escrever `{"captions": []}` aqui fazia
+    # TODA instalação nova morrer no primeiro render com "words.forEach is not
+    # a function" — antes de transcrever, que é justamente quando o placeholder
+    # deveria estar segurando as pontas.
+    #
+    # Medido em 2026-09-01 numa instalação limpa vinda do GitHub: o scaffold
+    # rodava, o `npm install` passava, e o render quebrava. Os dois arquivos
+    # concordavam sobre o NOME e discordavam sobre a FORMA.
     cj = pub / "captions.json"
-    if "captions" not in _ler(cj):
-        cj.write_text(json.dumps({"captions": []}), encoding="utf-8")
+    if _ler_lista(cj) is None:
+        cj.write_text(json.dumps([]), encoding="utf-8")
         feito.append("captions.json (vazio)")
 
     return feito

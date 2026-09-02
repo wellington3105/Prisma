@@ -222,7 +222,15 @@ function buildCues(words: Word[]): Cue[] {
   });
 }
 
-const CUES = buildCues(captions as Word[]);
+// `as Word[]` e uma promessa ao compilador, nao uma verificacao: um
+// captions.json com a forma errada passa pelo cast e explode em runtime com
+// "words.forEach is not a function". Aconteceu numa instalacao limpa vinda do
+// GitHub — o scaffold gravava {captions: []} e o componente esperava array.
+//
+// O scaffold foi corrigido; esta guarda existe porque o render e caro e um
+// captions.json de outra ferramenta nao deveria derrubar o video inteiro.
+const CAPS: Word[] = Array.isArray(captions) ? (captions as Word[]) : [];
+const CUES = buildCues(CAPS);
 
 const ENTER = 7; // frames — fade + drop
 const HI_ENTER = 10; // frames — blur resolve
