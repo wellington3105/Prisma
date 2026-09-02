@@ -25,6 +25,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import unicodedata
 
 FPS_DEFAULT = 30
 # Camadas visuais simultâneas toleradas. 4 dá margem sobre o "1-3 elementos"
@@ -75,7 +76,7 @@ def _uses_3d(ed: dict) -> bool:
     return False
 
 
-def check_direction(ed: dict) -> list[str]:
+def check_direction(ed: dict, pub: pathlib.Path | None = None) -> list[str]:
     """Poka-Yoke da doutrina (OPUS-VFX-3D § D3/D4).
 
     Avisa, não bloqueia. Estas são regras de direção de arte, e há vídeo em que
@@ -155,7 +156,156 @@ def check_direction(ed: dict) -> list[str]:
                     f"transição em {at}s. A transição É a saída — os dois no "
                     f"mesmo instante se anulam. Afaste um deles ou remova a "
                     f"transição")
+
+    avisos += check_camadas_vazias(ed, pub)
     return avisos
+
+
+# Um card se lê num relance ou não se lê. Acima disto ele quebra em quatro
+# linhas e vira parágrafo — medido em still, com "ainda não ficou natural".
+MAX_PALAVRAS_CARD = 3
+# E o teto de CARACTERES, que é o que a pílula realmente impõe: uma palavra só,
+# porém longa ("Estabilização", 13), passa no limite de palavras e mesmo assim
+# estica o card. O número espelha `MAX_CHARS_CARD` no GlassCard.tsx.
+MAX_CHARS_CARD = 12
+
+
+def check_camadas_vazias(ed: dict, pub: pathlib.Path | None = None) -> list[str]:
+    """Camada LIGADA e VAZIA — o defeito que só aparece depois do render.
+
+    Os três avisos daqui vêm de reprovações reais do usuário, e todos os três
+    eram legíveis no JSON antes de gastar o render:
+
+      - `brollFull` marcado e `inserts: []` → *"o b-roll está selecionado mas
+        nada aconteceu no vídeo"*. O checkbox dá permissão; ninguém forneceu o
+        clipe.
+      - `highlights.enabled` com item sem `text` → o painel de vidro vazio,
+        reprovado com *"horrível"*.
+      - card repetindo a palavra que a legenda mostra no mesmo instante → uma
+        das duas camadas vira ruído. A regra de ofício é que texto REFORÇA, não
+        duplica (PRP 2026-09-01).
+
+    Avisa, não bloqueia: seguem a mesma política dos avisos de direção.
+    """
+    avisos: list[str] = []
+
+    # --- camada ligada sem conteúdo ----------------------------------------
+    hl = ed.get("highlights") or {}
+    if hl.get("enabled"):
+        itens = [i for i in (hl.get("items") or []) if isinstance(i, dict)]
+        if not itens:
+            avisos.append(
+                "VAZIO: highlights ligado sem nenhum item. O card entra na tela "
+                "como retângulo translúcido sem palavra — foi assim que a "
+                "primeira versão do glass prism foi reprovada")
+        for i in itens:
+            txt = str(i.get("text") or "").strip()
+            if not txt:
+                avisos.append(f"VAZIO: card em {i.get('at')}s sem `text`")
+            elif len(txt.split()) > MAX_PALAVRAS_CARD:
+                avisos.append(
+                    f"CARD LONGO: \"{txt}\" tem {len(txt.split())} palavras. "
+                    f"Um card se lê num relance; acima de {MAX_PALAVRAS_CARD} "
+                    f"ele quebra em várias linhas e vira parágrafo")
+            elif len(txt) > MAX_CHARS_CARD:
+                avisos.append(
+                    f"CARD ESTICADO: \"{txt}\" tem {len(txt)} caracteres "
+                    f"(teto {MAX_CHARS_CARD}). A pílula é de UMA linha — o "
+                    f"componente encolhe a fonte para caber, mas o termo fica "
+                    f"menor que os outros. Prefira um sinônimo curto")
+
+    for chave, rotulo in (("glass", "glass"), ("tracked", "tracked"),
+                          ("text3d", "text3d")):
+        bloco = ed.get(chave) or {}
+        if bloco.get("enabled") and not (bloco.get("items") or bloco.get("objects")):
+            avisos.append(f"VAZIO: {rotulo} ligado sem itens — nada aparecerá")
+
+    # --- b-roll: permissão sem clipe ---------------------------------------
+    # O `brollFull` do gate de estilo autoriza a cobertura em tela cheia; os
+    # clipes são fornecidos à parte. Marcar um sem o outro produz um vídeo
+    # idêntico ao anterior, e o usuário só descobre isso assistindo.
+    quer_broll = bool((ed.get("style") or {}).get("brollFull")
+                      or ed.get("brollFull"))
+    if quer_broll and not (ed.get("inserts") or ed.get("behind")):
+        avisos.append(
+            "VAZIO: b-roll em tela cheia está selecionado mas `inserts` está "
+            "vazio. O checkbox dá permissão, não fornece o clipe — rode "
+            "helpers/broll_plan.py para saber ONDE cada cobertura entra e "
+            "aponte o arquivo em `src`")
+
+    # --- elemento agendado fora do vídeo ------------------------------------
+    # Uma transição depois do último frame não toca nem aparece: o efeito é
+    # escrito, contado nas estatísticas e silenciosamente descartado. Achado
+    # neste vídeo com uma transição em 41.2s num vídeo de 40.5s — invisível
+    # justamente porque não produz nada que se possa ver.
+    dur_total = float(ed.get("durationSec") or 0)
+    if dur_total > 0:
+        for chave in ("transitions", "inserts", "highlights"):
+            bloco = ed.get(chave)
+            itens = bloco.get("items") if isinstance(bloco, dict) else bloco
+            for it in (itens or []):
+                if not isinstance(it, dict):
+                    continue
+                t = it.get("at", it.get("start"))
+                if t is not None and float(t) >= dur_total:
+                    avisos.append(
+                        f"FORA DO VÍDEO: {chave[:-1]} em {t}s, mas o vídeo "
+                        f"termina em {dur_total}s. Não vai tocar nem aparecer")
+
+        # `segments.json` é escrito pelo scaffold a partir do EDL e sobrevive a
+        # edições no edit-data — um segmento além do fim deixa um zoom órfão que
+        # nunca renderiza. Achado em 2026-09-01: segmento em 41.2s num vídeo de
+        # 40.5s, resquício de uma transição já removida.
+        if pub:
+            try:
+                segs = json.loads((pub / "segments.json").read_text(encoding="utf-8"))
+                for s in (segs.get("segments") or []):
+                    if float(s.get("start", 0)) >= dur_total:
+                        avisos.append(
+                            f"FORA DO VÍDEO: segmento em {s['start']}s (vídeo "
+                            f"termina em {dur_total}s) — o zoom desse bloco "
+                            f"nunca aparece. Regere segments.json")
+            except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+                pass
+
+    # --- card duplicando a legenda -----------------------------------------
+    # Card e legenda na tela ao mesmo tempo dizendo a MESMA palavra: uma das
+    # camadas é redundante. Verificado em still, com "movimento" duas vezes.
+    if pub and hl.get("enabled"):
+        cap_p = pub / "captions.json"
+        try:
+            cap = json.loads(cap_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, AttributeError):
+            cap = None
+        if cap:
+            palavras = cap if isinstance(cap, list) else cap.get("captions") or []
+            atraso = float(hl.get("offsetS") or 0.8)
+            for i in (hl.get("items") or []):
+                if not isinstance(i, dict):
+                    continue
+                ini = float(i.get("at") or 0) + atraso
+                fim = ini + float(i.get("dur") or 3.0)
+                termos = {_norm_txt(w) for w in str(i.get("text") or "").split()}
+                termos.discard("")
+                for w in palavras:
+                    if not isinstance(w, dict):
+                        continue
+                    t = float(w.get("startMs", w.get("start", 0) * 1000)) / 1000
+                    if ini <= t <= fim and _norm_txt(str(w.get("text", ""))) in termos:
+                        avisos.append(
+                            f"DUPLICA: o card \"{i.get('text')}\" repete a "
+                            f"palavra que a legenda mostra em {t:.1f}s. Texto "
+                            f"REFORÇA, não duplica — o card deve dizer o que a "
+                            f"palavra significa. Ver references/direction.md")
+                        break
+
+    return avisos
+
+
+def _norm_txt(s: str) -> str:
+    """Minúscula, sem acento e sem pontuação — para comparar card com legenda."""
+    s = unicodedata.normalize("NFD", s.lower().strip(".,!?;:—-\"'()"))
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
 
 
 def main() -> None:
@@ -184,7 +334,7 @@ def main() -> None:
     video_lag_ms = 1000 // fps  # OffthreadVideo draws one frame late
 
     # Antes do render: um aviso depois de 2 minutos de encode chega tarde.
-    for aviso in check_direction(ed):
+    for aviso in check_direction(ed, pub):
         print(f"[direção] {aviso}", flush=True)
 
     if not args.skip_render:

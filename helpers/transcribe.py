@@ -115,8 +115,24 @@ def call_whisperx(
         print(f"    whisperx on {device}/{compute_type}, model {model_name}", flush=True)
 
     audio = whisperx.load_audio(str(audio_path))
-    model = whisperx.load_model(model_name, device, compute_type=compute_type,
-                                language=language)
+    # VAD mais permissivo que o padrão (onset 0.500). Medido em 2026-09-01: com
+    # o limiar padrão o WhisperX descartou 10.7s de 39.9s — 27% de um vídeo em
+    # que o falante NÃO para. Confirmado que era voz e não respiração comparando
+    # zero-crossing rate e RMS com trechos de fala já transcritos (0.053/4668 no
+    # trecho perdido contra 0.068/4309 na fala reconhecida).
+    #
+    # O efeito na tela é pior que "faltar palavra": a legenda CONGELA na última
+    # frase enquanto a pessoa segue falando, e cada still isolado parece
+    # correto — por isso o defeito sobreviveu a toda a sessão de verificação.
+    vad_options = {"vad_onset": 0.200, "vad_offset": 0.250}
+    try:
+        model = whisperx.load_model(model_name, device, compute_type=compute_type,
+                                    language=language, vad_options=vad_options)
+    except TypeError:
+        # Versões antigas não aceitam vad_options — melhor transcrever com o
+        # padrão do que falhar.
+        model = whisperx.load_model(model_name, device, compute_type=compute_type,
+                                    language=language)
     result = model.transcribe(audio, batch_size=8, language=language)
     detected = result.get("language") or language or ""
 

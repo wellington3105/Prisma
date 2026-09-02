@@ -93,6 +93,7 @@ export const CustomGraphics: React.FC = () => {
   return (
     <>
       {splits.length ? <SplitScreen items={splits} /> : null}
+      {flashes.length ? <CutSfx items={flashes} /> : null}
       {flashes.length ? <CutFlashes items={flashes} /> : null}
     </>
   );
@@ -106,6 +107,45 @@ export const CustomGraphics: React.FC = () => {
 // up with the frame the picture actually changes on, same as the split windows.
 const FLASH_LEAD = 2; // frames before the cut
 const FLASH_LEN = 7; // total, ~230ms at 30fps
+/**
+ * Volume do clique de emenda. Era 0.9 — quase o teto, para um som que deve ser
+ * SENTIDO e não ouvido. O próprio cabeçalho do Main pede camadas baixas
+ * (whoosh ~0.09, pop ~0.12); um clique a 0.9 sobre voz normalizada não esconde
+ * o corte, disputa com ele.
+ *
+ * 0.22 fica acima do whoosh (o clique precisa marcar o instante) e bem abaixo
+ * da fala, que é a camada que manda.
+ */
+const CLICK_VOL = 0.22;
+
+/**
+ * O clique de TODA emenda, inclusive as que não têm overlay visual.
+ *
+ * `isOverlayCut` existe para impedir que um flash seja pintado por cima do
+ * shader — problema de imagem. Mas ele filtrava a lista inteira, e junto foi o
+ * ÁUDIO: os cortes `displace`/`refract` ficavam mudos. Medido neste vídeo, eram
+ * as 3 emendas cobertas por B-roll — justamente as mais expostas, porque a
+ * troca de imagem chama atenção para o ponto.
+ *
+ * A regra de montagem é que o clique curto na emenda a esconde melhor que
+ * qualquer transição visual: o ouvido aceita o corte que o olho notaria. Por
+ * isso o som é montado a partir da lista COMPLETA, e só o overlay é filtrado.
+ */
+const CutSfx: React.FC<{items: CutFlash[]}> = ({items}) => {
+  const {fps} = useVideoConfig();
+  return (
+    <>
+      {items.map((it, i) => {
+        const c = Math.round(it.at * fps) + VIDEO_LAG;
+        return (
+          <Sequence key={i} from={c} durationInFrames={10} layout="none">
+            <Sfx src={it.sfx ?? 'cut-click.mp3'} volume={it.volume ?? CLICK_VOL} />
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
 
 const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
   const frame = useCurrentFrame();
@@ -117,29 +157,26 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
   });
   if (!active) return null;
 
+  // O som é montado por <CutSfx> sobre a lista COMPLETA de emendas; este
+  // componente cuida só do overlay visual. Manter o Sfx nos dois lugares
+  // tocaria o clique duas vezes na mesma emenda.
   const c = Math.round(active.at * fps) + VIDEO_LAG;
-  const sfxSeq = (
-    <Sequence from={c} durationInFrames={10} layout="none">
-      <Sfx src={active.sfx ?? 'cut-click.mp3'} volume={active.volume ?? 0.9} />
-    </Sequence>
-  );
 
   switch (active.type) {
     case 'whip-pan':
-      return <WhipPan c={c} frame={frame} intensity={active.intensity ?? 1}>{sfxSeq}</WhipPan>;
+      return <WhipPan c={c} frame={frame} intensity={active.intensity ?? 1} />;
     case 'glitch':
-      return <Glitch c={c} frame={frame} intensity={active.intensity ?? 1}>{sfxSeq}</Glitch>;
+      return <Glitch c={c} frame={frame} intensity={active.intensity ?? 1} />;
     default:
-      return <Flash c={c} frame={frame} intensity={active.intensity ?? 1}>{sfxSeq}</Flash>;
+      return <Flash c={c} frame={frame} intensity={active.intensity ?? 1} />;
   }
 };
 
 // ---- flash (original) ------------------------------------------------------
-const Flash: React.FC<{c: number; frame: number; intensity: number; children: React.ReactNode}> = ({
+const Flash: React.FC<{c: number; frame: number; intensity: number}> = ({
   c,
   frame,
   intensity: k,
-  children,
 }) => {
   const {width} = useVideoConfig();
   const p = (frame - (c - FLASH_LEAD)) / (FLASH_LEN - 1); // 0..1 pela janela
@@ -176,8 +213,7 @@ const Flash: React.FC<{c: number; frame: number; intensity: number; children: Re
           }}
         />
       </AbsoluteFill>
-      {children}
-    </AbsoluteFill>
+          </AbsoluteFill>
   );
 };
 
@@ -189,11 +225,10 @@ const Flash: React.FC<{c: number; frame: number; intensity: number; children: Re
 // frame in one direction (denser and faster than the flash's single beam)
 // plus a brief white-out at the peak, rather than actually motion-blurring
 // pixels that aren't reachable from here.
-const WhipPan: React.FC<{c: number; frame: number; intensity: number; children: React.ReactNode}> = ({
+const WhipPan: React.FC<{c: number; frame: number; intensity: number}> = ({
   c,
   frame,
   intensity: k,
-  children,
 }) => {
   const {width} = useVideoConfig();
   const p = interpolate(frame, [c - FLASH_LEAD, c, c - FLASH_LEAD + FLASH_LEN], [0, 1, 0], {
@@ -232,8 +267,7 @@ const WhipPan: React.FC<{c: number; frame: number; intensity: number; children: 
           );
         })}
       </AbsoluteFill>
-      {children}
-    </AbsoluteFill>
+          </AbsoluteFill>
   );
 };
 
@@ -246,17 +280,16 @@ const WhipPan: React.FC<{c: number; frame: number; intensity: number; children: 
 // glance without needing pixels from the layer underneath.
 // HyperFrames' original (packages/shader-transitions) is a WebGL shader pass;
 // this is built from scratch for what a Chromium/CSS render context gives.
-const Glitch: React.FC<{c: number; frame: number; intensity: number; children: React.ReactNode}> = ({
+const Glitch: React.FC<{c: number; frame: number; intensity: number}> = ({
   c,
   frame,
   intensity: k,
-  children,
 }) => {
   const p = interpolate(frame, [c - FLASH_LEAD, c, c - FLASH_LEAD + FLASH_LEN], [0, 1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  if (p <= 0.01) return <AbsoluteFill style={{pointerEvents: 'none'}}>{children}</AbsoluteFill>;
+  if (p <= 0.01) return null;
 
   const shift = 14 * k * p;
   // a few deterministic "sliced" bands (frame-seeded, not random — renders
@@ -288,8 +321,7 @@ const Glitch: React.FC<{c: number; frame: number; intensity: number; children: R
           }}
         />
       ))}
-      {children}
-    </AbsoluteFill>
+          </AbsoluteFill>
   );
 };
 

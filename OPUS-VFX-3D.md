@@ -1304,3 +1304,328 @@ Full-frame deriva menos que card: os mesmos 8% que leem como suave num card de
 `drift: {from, to}`.
 
 — Maestro, conduzindo o impossível 🎼
+
+### Poka-Yoke de camada vazia ✅ (2026-09-01)
+
+Os três defeitos que o **usuário** encontrou assistindo ao vídeo — não os que o
+gate encontrou — tinham uma coisa em comum: **todos eram legíveis no JSON antes
+do render**. Cada um custou um ciclo completo de render (~20 min) para aparecer.
+
+| Reprovação do usuário | Causa no JSON | Aviso novo |
+|---|---|---|
+| *"horrível"* — painel de vidro vazio | `highlights.enabled` com item sem `text` | `VAZIO: card sem text` |
+| *"o b-roll está selecionado mas nada aconteceu"* | `brollFull: true` + `inserts: []` | `VAZIO: b-roll selecionado sem clipe` |
+| card e legenda dizendo "movimento" juntos | card repete palavra da legenda na mesma janela | `DUPLICA` |
+| card em 4 linhas cobrindo o rosto | `text` com mais de 3 palavras | `CARD LONGO` |
+
+O terceiro é o que justifica ler `captions.json` dentro do gate: card e legenda
+vivem em arquivos diferentes, e a contradição entre eles só é visível cruzando
+os dois. É a mesma lição do resto deste Opus — **o defeito aparece em ms no
+teste isolado e em ciclos no render**.
+
+Verificado nos dois sentidos: os 4 avisos disparam no JSON defeituoso, e o
+`edit-data.json` do vídeo aprovado passa sem nenhum aviso. Um falso positivo
+seria pior que o silêncio, porque treinaria a ignorar o gate.
+
+`brollFull` é lido de `ed["style"]["brollFull"]` **ou** da raiz — o gate de
+estilo escreve num lugar e o scaffold noutro, e checar só um era o bug em
+potencial.
+
+### Card-etiqueta e destaque colorido na legenda ✅ (2026-09-01)
+
+O usuário mandou o print e o link do Reel de referência (`psicristianefroes`).
+Consegui **assistir ao Reel** — 7 frames entre 8s e 28s, pelo navegador, até o
+Instagram bloquear e exigir login (onde parei; credenciais não são minhas para
+usar). O que foi observado, e não suposto:
+
+| Observado no Reel | Implementado |
+|---|---|
+| Card "DSM-5" (28s): pílula, um termo só | `borderRadius: size*1.5` — satura em pílula |
+| O card CHEGA ao lugar, não brota nele | desliza 22px enquanto a mola escala |
+| Uma palavra COLORIDA dentro da frase branca | `ACCENT` na palavra `hi` do ScatterCaptions |
+| Diagrama de Venn animado (13s) | **não implementado** — motion graphics dedicado |
+
+**O defeito de fundo estava na escolha da palavra, não na cor.** O
+`ScatterCaptions` destacava *a palavra mais longa* da cue — critério que elegia
+"consigo", "realmente", "diferente". Comprimento não é importância.
+
+Substituído por `pesoDaPalavra`, que espelha a hierarquia do
+`helpers/highlight_words.py`: número > nome próprio > termo técnico >
+substantivo longo, com verbo e advérbio zerados. **As duas camadas precisam
+concordar sobre o que é importante** — se a legenda colore uma coisa e o card
+destaca outra na mesma frase, o vídeo tem duas opiniões.
+
+Medido em teste isolado sobre o transcript real, três rodadas:
+
+| Rodada | Destaques | Problema encontrado |
+|---|---|---|
+| critério antigo | consigo, realmente, diferente | comprimento ≠ importância |
+| + hierarquia | claro, precisa, entendi, pelo, desse | adjetivo, verbo conjugado, contração |
+| + sufixos e lista | teste, movimento, questão, estranho, áudio | — |
+
+O ciclo inteiro custou segundos porque rodou em Node sobre o `captions.json`,
+sem render. Três renders teriam mostrado que "está ruim" sem dizer **qual termo
+do critério** estava errado.
+
+### Version mismatch travava todo render 3D ✅ (2026-09-01)
+
+`npx remotion still --gl=angle` morria com "Version mismatch: 4.0.482 / 4.0.513"
+e stack do `@remotion/three`. O pacote divergente era `@remotion/layout-utils`,
+puxado como dependência transitiva — `npx remotion versions --log=verbose` diz
+qual é; adivinhar pelo stack teria custado tentativas.
+
+Causa: `"^4.0.482"` no `package.json` do scaffold. O `^` deixa o npm subir os
+`@remotion/*` enquanto `remotion` fica preso na versão exata. **Todos os
+`@remotion/*` fixados sem `^`** em `assets/shortform/package.json`.
+
+### B-roll com `frame: 'glass'` ⛔ REPROVADO (2026-09-01)
+
+`useOffthreadVideoTexture` só lê VÍDEO — inserir JPG dá "No frame found at
+position 30". Convertido para MP4 (`-loop 1 -t 4`, 1080×1920) o render passa,
+mas o resultado é um **borrão irisado com um "X" de costura**, sem imagem
+reconhecível.
+
+Isolado em still: sem o vidro, o B-roll fica limpo; com ele, quebra. **É o vidro
+que falha sobre imagem em movimento**, não o B-roll. Removido dos inserts.
+
+O vidro continua correto no seu papel real: o card-etiqueta, via `backdropFilter`
+CSS — que é o que a referência usa.
+
+### Pílula de uma linha + teto de caracteres ✅ (2026-09-01)
+
+O contato do v7 mostrou "Sem tripé" (9 chars) quebrado em duas linhas e
+"Estabilização" (13) esticado. **A pílula depende de uma linha só**: o raio
+satura na meia-altura, e assim que o texto quebra o card cresce em altura, o
+raio deixa de saturar e a forma vira caixa.
+
+- `whiteSpace: nowrap` no card — a forma passa a ser garantida, não torcida;
+- `MAX_CHARS_CARD = 12`, medido: com o corpo em `width*0.046*1.15` e padding de
+  `size*1.1`, o texto transborda por volta de 14 chars em 1080 de largura;
+- fonte encolhe proporcionalmente acima do teto (válvula, não solução);
+- aviso `CARD ESTICADO` no gate, por CARACTERES — "Estabilização" é uma palavra
+  só e passava no limite de palavras.
+
+Verificado nos dois sentidos: o gate acusou exatamente o card que o still
+mostrou esticado e deixou os outros três passarem.
+
+### Contraste da legenda: hipótese refutada por medição (2026-09-01)
+
+O contato pareceu mostrar a legenda "apagada" sobre a calça clara. Duas
+tentativas — sombra dupla e escurecer o pé do gradiente de `#d5cec1` para
+`#b8b0a2` — e a comparação lado a lado ficou visualmente idêntica.
+
+Medido em vez de olhado (luminância p95 do glifo contra p20 do fundo):
+
+| | contraste |
+|---|---|
+| original | **4.91:1** |
+| com as duas mudanças | **5.00:1** |
+
+Acima do mínimo WCAG de 4.5:1 nos dois casos. **O defeito não existia** — o que
+parecia apagado era a escala reduzida do próprio contato. Mudança de cor
+revertida; a sombra dupla ficou por ser inócua, com o ganho real registrado
+(0.09) para ninguém a tomar por melhoria.
+
+A lição repete a do resto deste Opus ao contrário: aqui o *olhar* inventou um
+defeito, e só a medição desfez. Antes de mexer numa cor, medir o contraste custa
+segundos.
+
+### Distribuição no tempo — o defeito que só o vídeo INTEIRO mostra ✅ (2026-09-01)
+
+Todos os stills anteriores estavam corretos e o vídeo ainda tinha um problema
+de ritmo. Um contato de 20 frames cobrindo os 40s expôs o que frame escolhido
+nunca mostra: **card e B-roll agrupados, com buracos entre eles**.
+
+Medido, não estimado — distância entre eventos visuais consecutivos:
+
+| | antes | depois |
+|---|---|---|
+| menor vão | **0.1s** (card colado no B-roll) | 3.4s |
+| maior vão | **9.0s** (nada acontecendo) | 5.0s |
+
+O padrão agora alterna card → B-roll → card. Os B-rolls são fixos (cobrem as
+emendas que `broll_plan.py` mapeou); os cards é que se movem para os vãos.
+
+**Mover o card quebrou o sentido, e isso é o ponto.** Reposicionado, "Gimbal"
+caiu sobre *"o fluido, essa questão"* e "Estável" sobre *"bem estranho"* — o
+card contradizendo a fala. Redação refeita para cada trecho, e "Fluidez" foi
+descartado por duplicar *"fluido"*, a mesma regra que o gate vigia.
+
+Ou seja: **posição e redação não são decisões independentes**. Mudar quando o
+card entra obriga a reescrever o que ele diz.
+
+### Um falso defeito que a medição desfez (2026-09-01)
+
+No mesmo contato o vídeo parecia terminar em corte seco, com ~8s vazios. A
+medição mostrou o oposto: a fala vai até **39.92s** e o corte é em **40.5s** —
+0.6s depois da última palavra, que é fechamento normal. O "vão" era a distância
+desde o último *card*, com o usuário falando o tempo todo.
+
+Segunda vez neste Opus em que o olhar inventou um defeito e a medição o desfez
+(a primeira foi o contraste da legenda, 4.91:1). Registrado porque a assimetria
+importa: o olhar é insubstituível para ACHAR (foi ele que achou o agrupamento),
+e não confiável para DIAGNOSTICAR.
+
+### Clique em TODA emenda + volume corrigido ✅ (2026-09-01)
+
+Dois defeitos de áudio, ambos no mesmo lugar e nenhum visível em still.
+
+**1. As emendas mais expostas eram as únicas mudas.** `isOverlayCut` existe para
+impedir que um flash seja pintado sobre o shader — problema de IMAGEM. Mas
+filtrava a lista inteira antes de montar o `<Sfx>`, e os cortes
+`displace`/`refract` ficavam sem som. Neste vídeo eram as 3 emendas cobertas
+por B-roll: justamente as que mais precisam do clique, porque a troca de imagem
+chama atenção para o ponto. Som agora é montado por `<CutSfx>` sobre a lista
+COMPLETA; só o overlay é filtrado.
+
+**2. Volume 0.9 num som que deve ser sentido, não ouvido.** O cabeçalho do
+`Main.tsx` pede camadas baixas (whoosh ~0.09, pop ~0.12) e o clique estava em
+0.9. Ajustado para `CLICK_VOL = 0.22`.
+
+**A medição por RMS bruto não provou nada** — ganhos de 0.75x a 1.14x nas
+emendas, ruído. A voz é ~20× mais forte que o clique e o mascara por completo.
+O que provou foi a **diferença amostra-a-amostra entre v9 e v10**:
+
+| emenda | tipo | energia de (v10 − v9) |
+|---|---|---|
+| 15.87s | displace | **114** — som que não existia |
+| 25.00s | displace | **114** — som que não existia |
+| 20.93s | flash | **334** — a queda de 0.9 → 0.22 |
+
+Diferença não-nula onde antes havia silêncio prova a adição; a magnitude maior
+no flash prova a redução. Comparar dois renders no mesmo ponto responde o que
+medir um só não responde.
+
+### Um bug que o TypeScript não pega ⚠️ (2026-09-01)
+
+Ao remover o parâmetro `children` morto dos overlays, um `re.sub` trocou
+`{children}` por `null` e produziu:
+
+```tsx
+return <AbsoluteFill style={{pointerEvents:'none'}}>null</AbsoluteFill>;
+```
+
+Isso renderiza **a palavra "null" na tela**. `tsc --noEmit` passou limpo: texto
+em JSX é válido. Achado por `grep` do padrão logo após a edição — regex sobre
+código é rápido e cego, e conferir o resultado é parte da operação, não zelo.
+
+### Transição fora do vídeo ✅ (2026-09-01)
+
+Uma transição em 41.2s num vídeo de 40.5s: escrita, contada, e silenciosamente
+descartada. Invisível justamente porque não produz nada que se possa ver.
+Aviso `FORA DO VÍDEO` no gate, cobrindo `transitions` e `inserts`, verificado
+nos dois sentidos.
+
+### Trilha sonora ✅ (2026-09-01)
+
+Eu havia dito que "não há gerador de trilha na skill". **Estava errado**: há
+`treblo_music.py` (geração via API), `music_carve.py` (sidechain band-limited) e
+`audio_chain.py`, e a chave estava em `.env` o tempo todo. O usuário apontou.
+
+Fluxo executado, com os números medidos:
+
+| etapa | medição |
+|---|---|
+| trilha gerada (60s, 48kHz estéreo) | -15.1 dB médio, pico -0.9 dB |
+| `music_carve.py --volume 0.22` | -31.5 dB médio, pico -16.0 dB |
+| voz do `cut.mp4` (banda de pico 80-250 Hz) | -22.4 dB |
+
+A trilha esculpida fica **9 dB abaixo da voz** — o alvo de
+`references/soundtrack.md`.
+
+**Uma armadilha de dupla atenuação:** o carve grava o ganho NO ARQUIVO. Deixar
+`volume: 0.10` no edit-data multiplicaria (0.22 × 0.10) e a trilha sumiria.
+`volume: 1.0` apontando para `trilha_carved.mp3` é o correto.
+
+Verificado comparando v11 (sem trilha) e v12 nos dois regimes:
+
+| instante | v11 | v12 | leitura |
+|---|---|---|---|
+| pausa em 5.74s | 554 | **934** | música aparece (+69%) |
+| fala forte em 5.0s | 4335 | **4357** | voz manda (+0.5%) |
+
+Subir na pausa e não subir sob a fala é exatamente o que o carve promete.
+
+### `treblo_music.py`: o timeout perdia o crédito ✅ (2026-09-01)
+
+A geração expirou em 600s com `sys.exit("Treblo timed out")` — e o task_id
+morria junto. A tarefa continua no servidor, **já cobrada**, e sem o id não há
+como recuperá-la. Confirmado consultando a API: a primeira tarefa seguia em
+`"PROMPT"` mais de 10 min depois. Não era o cliente desistindo cedo; era fila.
+
+Três correções:
+
+- a mensagem de timeout agora **imprime o task_id** e o comando para retomar;
+- `--resume TASK_ID` baixa uma geração já iniciada, sem cobrar de novo;
+- `--timeout` virou opção de CLI (era constante).
+
+`--resume` foi testado contra a tarefa real em andamento e baixou a trilha
+(857 KB). O teste que vale é o do caso que motivou a correção.
+
+Nota de API: `length_range` exige min **estritamente menor** que max —
+`--length-min 60 --length-max 60` devolve 422.
+
+### VAD do WhisperX descartava fala ✅ (2026-09-01)
+
+O contato do v12 mostrou a legenda **congelada em "desse modo" por 3.15s**
+enquanto o falante seguia falando. Não era erro de layout: o transcript não
+tinha as palavras.
+
+Causa: o VAD do WhisperX com limiar padrão (`onset 0.500`) descarta trechos de
+fala mais baixa. Baixado para `vad_onset 0.200 / vad_offset 0.250`, com fallback
+`TypeError` para versões que não aceitam o parâmetro.
+
+Resultado medido: **85 → 96 palavras**, e o buraco de 3.15s virou 0.80s.
+
+**Correção de um número que eu mesmo publiquei.** Primeiro relatei "27% do vídeo
+sem legenda" usando um limiar de energia fixo (rms > 400). Ao classificar por
+`zcr` + `rms` — voz tem energia alta e zero-crossing baixo; eco de sala tem
+energia baixa — descobri que os vãos de 3.9s e 7.8s eram **eco, não fala**
+(rms ~450 contra ~3200 da voz real).
+
+| | vãos | fala sem legenda |
+|---|---|---|
+| detector ingênuo (rms>400) | 10 | 10.7s (27%) |
+| detector correto (rms>800 + zcr<0.20) | 4 | **3.5s (9%)** |
+
+O defeito era real e a correção também; o tamanho que eu anunciei estava errado
+por quase 3×. Limiar único sobre energia não separa voz de ambiente.
+
+Pendência aberta: com as palavras recuperadas, o destaque colorido da legenda
+caiu em **"neto"** (nome próprio dentro de "o neto davi"), que não é o ponto da
+frase. `pesoDaPalavra` pontua nome próprio em 2.2 e aqui isso erra.
+
+### Nome próprio na legenda ✅ (2026-09-01)
+
+Com a fala recuperada pelo VAD, o destaque colorido caiu em **"neto"** — a
+pessoa citada, não o assunto. Duas hipóteses erradas antes da certa:
+
+1. *"o bônus de 2.2 para nome próprio está errado"* — falso. `pesoDaPalavra`
+   recebia o texto já minúsculo (`clean()` derruba a maiúscula antes), então o
+   bônus nunca disparava. "neto" venceu com **0.4**, o piso genérico, por falta
+   de concorrência na cue.
+2. *"listar graus de parentesco em VAZIAS"* — corrigiu "neto" e elegeu "davi".
+   Listar nomes um a um é jogo infinito e específico deste vídeo. Revertido.
+
+A regra veio de medir a capitalização original, que o `clean()` descartava:
+
+| palavra | maiúscula | é nome? |
+|---|---|---|
+| Neto, Davi | sim (meio da frase) | sim |
+| teste, áudio | não | não |
+
+O WhisperX marca nome próprio com fidelidade — a informação existia e estava
+sendo jogada fora. `pesoDaPalavra` ganhou o parâmetro `nomeProprio`, que zera a
+nota; a detecção ignora início de frase, onde maiúscula não significa nada.
+
+**Divergência deliberada com `highlight_words.py`:** lá nome próprio vale 2.2,
+aqui vale 0. O card nomeia um conceito e pode citar uma marca; a legenda
+acompanha a fala inteira, e colorir o nome de alguém desvia o olho do assunto
+para quem foi citado. Comentário do cabeçalho corrigido, que ainda anunciava a
+hierarquia antiga.
+
+Efeito colateral tratado: sem "neto"/"davi", a cue elegeu **"meio"** — advérbio.
+Somado a VAZIAS junto de "quase" e "todo".
+
+Resultado: 8 destaques em 23 cues, todos substantivos do assunto —
+teste · movimento · questão · começa · estranho · áudio.

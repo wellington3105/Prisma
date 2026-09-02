@@ -39,6 +39,10 @@ const C = (editData as any).captions ?? {};
 const SAFE_W = C.scatterSafeWidth ?? 820;
 const BASE = C.scatterFontSize ?? 72;
 const HI_SCALE = 1.62;
+// Cor do destaque dentro da legenda. Vem do accent escolhido no gate de estilo,
+// para headline, card e palavra destacada falarem a mesma língua cromática —
+// duas cores de destaque no mesmo vídeo leem como dois vídeos colados.
+const ACCENT = C.accentColor ?? (editData as any).accent ?? '#7fd4ff';
 const SPREAD = 0.45; // how far a line may wander off centre, 0..1 of the free room
 const WORD_GAP = 12;
 // Block centre as a fraction of height. The reference puts this text over
@@ -69,6 +73,67 @@ const INK: React.CSSProperties = {
 const clean = (t: string) => t.replace(/[.,!?…]+$/, '').toLowerCase();
 const isBreak = (t: string) => /[.,!?…]$/.test(t);
 
+// Palavras que nunca são destaque: artigos, preposições, conectivos, verbos de
+// ligação e muletas. Espelha a lista de `helpers/highlight_words.py` — as duas
+// camadas precisam concordar sobre o que é importante, senão a legenda colore
+// uma coisa e o card destaca outra na mesma frase.
+const VAZIAS = new Set([
+  'a','o','as','os','um','uma','uns','umas','de','da','do','das','dos','em',
+  'na','no','nas','nos','por','para','pra','pro','com','sem','sobre','entre',
+  'ate','que','quem','qual','quais','e','ou','mas','porem','porque','pois',
+  'se','como','quando','onde','eu','voce','ele','ela','nos','eles','elas',
+  'meu','minha','seu','sua','esse','essa','isso','este','esta','isto','ser',
+  'estar','ter','haver','ir','vir','fazer','sao','estao','tem','tinha','foi',
+  'era','vai','vou','muito','mais','menos','ja','ainda','so','tambem','nao',
+  'sim','bem','bom','aqui','ali','la','entao','dai','ai','tipo','assim',
+  'coisa','gente','vamos','acho','sei','tudo','nada','consigo','pode','vez',
+  // Conjugações irregulares e adjetivos genéricos que o sufixo não pega, todos
+  // observados escapando no teste isolado sobre este transcript.
+  'precisa','precisam','entendi','entende','claro','clara','melhor','mesmo',
+  'sabe','sabia','fica','ficou','quer','quero','deve','devia','parece',
+  // Contrações de preposição e demonstrativos: têm 4+ letras e escapavam do
+  // piso de comprimento, mas são exatamente o tipo de palavra que a regra
+  // exclui — não nomeiam nada.
+  'pelo','pela','pelos','pelas','desse','dessa','deste','desta','disso',
+  'daquele','daquela','naquele','naquela','nesse','nessa','neste','nesta',
+  'modo','forma','jeito','parte','lado','caso','ponto','meio','quase','todo',
+]);
+
+/** Sem acento e minúscula, para bater com VAZIAS. */
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/**
+ * Quanto esta palavra merece o destaque da cue. Mesma hierarquia do helper
+ * Python: número > termo técnico > substantivo longo. Nome próprio é EXCLUÍDO
+ * aqui, ao contrário do helper — o card nomeia um conceito e pode se dar ao
+ * luxo de citar uma marca; a legenda acompanha a fala inteira, e colorir o nome
+ * de uma pessoa no meio dela desvia o olho do assunto para quem foi citado.
+ * Verbo no infinitivo/gerúndio devolve 0 — a referência destaca COISAS, não
+ * ações.
+ */
+function pesoDaPalavra(limpo: string, nomeProprio = false): number {
+  const n = semAcento(limpo);
+  if (n.length < 4 || VAZIAS.has(n)) return 0;
+  // Nome de pessoa não é destaque: colorir "Neto" ou "Davi" aponta para QUEM
+  // foi citado em vez do assunto da frase. Medido em 2026-09-01 — a cue "o Neto
+  // Davi e ficou meio" elegeu "neto" com 0.4, o piso genérico, por falta de
+  // concorrência. A maiúscula no MEIO da frase é o sinal, e o WhisperX a marca
+  // com fidelidade; no início não diz nada, porque toda frase começa assim.
+  if (nomeProprio) return 0;
+  if (/\d/.test(limpo)) return 3;
+  // Advérbio em -mente e adjetivo em -ente: comprimento os fazia passar por
+  // substantivo ("realmente", "diferente"), medido no teste isolado. Nenhum
+  // dos dois nomeia uma coisa, que é o que o destaque deve fazer.
+  if (/(mente|ente)$/.test(n)) return 0;
+  // Verbo: infinitivo, gerúndio, particípio e as conjugações de 1ª/3ª pessoa
+  // que apareceram na medição ("precisa", "entendi", "consigo").
+  if (/(ar|er|ir|ando|endo|indo|ado|ido|amos|emos|imos)$/.test(n) && n.length > 4) return 0;
+  if (/[kwy]/.test(n)) return 2;
+  if (n.length >= 8) return 1.5;
+  if (n.length >= 6) return 1;
+  return 0.4;
+}
+
 // A cue is a breath: punctuation, or 6 words, or a gap of 400ms+ in the speech.
 function buildCues(words: Word[]): Cue[] {
   const groups: Word[][] = [];
@@ -85,13 +150,22 @@ function buildCues(words: Word[]): Cue[] {
   if (cur.length) groups.push(cur);
 
   return groups.map((g, gi) => {
-    // one highlight per cue: the longest word, and only if it carries weight
+    // One highlight per cue. Comprimento NÃO é importância: escolher a palavra
+    // mais longa punha o destaque em "consigo" e "realmente", que são muleta e
+    // advérbio. A referência (Reel psicristianefroes) colore substantivos —
+    // "a gente", "a pessoa", "DSM-5" — o mesmo critério do highlight_words.py:
+    // número > nome próprio > substantivo com carga; nunca verbo ou conectivo.
     let hiIdx = -1;
-    let hiLen = 6;
+    let hiScore = 0;
     g.forEach((w, i) => {
-      const l = clean(w.text).length;
-      if (l > hiLen) {
-        hiLen = l;
+      // Maiúscula só significa nome próprio no MEIO da frase. A primeira
+      // palavra da cue e a que segue um ponto abrem frase e sempre vêm
+      // capitalizadas — tratá-las como nome descartaria substantivos válidos.
+      const abreFrase = i === 0 || isBreak(g[i - 1].text);
+      const nomeProprio = !abreFrase && /^[A-ZÀ-Þ]/.test(w.text.trim());
+      const s = pesoDaPalavra(clean(w.text), nomeProprio);
+      if (s > hiScore) {
+        hiScore = s;
         hiIdx = i;
       }
     });
@@ -204,12 +278,25 @@ const CueView: React.FC<{cue: Cue; endFrame: number}> = ({cue, endFrame}) => {
                 <span
                   key={wi}
                   style={{
+                    // A palavra destacada recebe COR SÓLIDA; o resto mantém o
+                    // gradiente de tinta. É o gesto da referência: uma palavra
+                    // colorida dentro da frase branca, e é a cor — não o
+                    // tamanho — que diz onde olhar. Sobrescrever `...INK` exige
+                    // limpar `WebkitTextFillColor`, senão o clip-to-text do
+                    // gradiente vence e o glifo sai transparente.
                     ...INK,
+                    ...(p.hi
+                      ? {
+                          backgroundImage: 'none',
+                          WebkitTextFillColor: ACCENT,
+                          color: ACCENT,
+                        }
+                      : null),
                     fontSize: p.size,
                     fontWeight: p.hi ? 600 : 400,
                     fontStyle: p.hi && hash(li * 7 + wi) > 0.65 ? 'italic' : 'normal',
                     opacity: t * (1 - out),
-                    filter: `${blur > 0.4 ? `blur(${blur.toFixed(1)}px) ` : ''}drop-shadow(0 4px 14px rgba(0,0,0,0.5))`,
+                    filter: `${blur > 0.4 ? `blur(${blur.toFixed(1)}px) ` : ''}drop-shadow(0 2px 3px rgba(0,0,0,0.85)) drop-shadow(0 6px 20px rgba(0,0,0,0.6))`,
                   }}
                 >
                   {clean(p.text)}

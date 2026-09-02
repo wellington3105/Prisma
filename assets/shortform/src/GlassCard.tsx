@@ -77,6 +77,20 @@ export type HighlightBlock = {
   offsetS?: number;
 };
 
+/**
+ * Teto de caracteres do card, medido e não estimado.
+ *
+ * O card é uma pílula de uma linha a ~52% da largura do quadro. Com o corpo em
+ * `width*0.046*1.15` e o padding de `size*1.1` de cada lado, o texto começa a
+ * transbordar por volta de 14 caracteres em 1080 de largura. "Estabilização"
+ * (13) já lê esticado no still; 12 é o último confortável.
+ *
+ * A regra de ofício por trás do número: o card se lê num RELANCE. Um termo que
+ * não cabe em doze caracteres não é etiqueta, é frase — e frase é trabalho da
+ * legenda, não do destaque.
+ */
+const MAX_CHARS_CARD = 12;
+
 const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
   h,
   total,
@@ -98,9 +112,22 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
   });
   const vis = Math.min(enter, exit);
 
+  // O card DESLIZA para o lugar enquanto cresce — observado no Reel de
+  // referência (card "DSM-5", 28s): ele não brota no ponto final, chega até
+  // ele. Só escalar lê como pop-up; deslizar lê como algo entrando em cena.
+  // 22px é curto de propósito: deslocamento longo vira transição e rouba a
+  // atenção do termo, que é o que deveria ser lido.
+  const desliza = interpolate(enter, [0, 1], [22, 0], {extrapolateRight: 'clamp'});
+
   // Escala em função da largura do quadro: o card ocupa ~46% dela, o que o
   // mantém legível em 1080 vertical sem competir com o rosto.
-  const size = width * 0.046;
+  //
+  // Termos acima do teto encolhem proporcionalmente em vez de estourar a
+  // pílula. É a válvula de segurança, não a solução: o lugar de corrigir um
+  // termo longo é no edit-data.json, e o gate avisa. Mas um card cortado pela
+  // borda da tela é pior que um card 15% menor.
+  const excesso = Math.max(1, h.text.length / MAX_CHARS_CARD);
+  const size = (width * 0.046) / excesso;
 
   return (
     <AbsoluteFill
@@ -115,7 +142,7 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
           position: 'absolute',
           left: `${(h.x ?? 0.72) * 100}%`,
           top: `${(h.y ?? 0.24) * 100}%`,
-          transform: `translate(-50%,-50%) scale(${vis}) rotate(${h.tilt ?? -2}deg)`,
+          transform: `translate(-50%,calc(-50% + ${desliza}px)) scale(${vis}) rotate(${h.tilt ?? -2}deg)`,
           opacity: vis,
           // Blur em 18px: dentro da faixa 12–24 que a literatura chama de
           // "sweet spot". Acima de 30 o fundo vira borrão e some a sensação
@@ -125,15 +152,23 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
           background: dark ? 'rgba(12,17,28,0.62)' : 'rgba(255,255,255,0.58)',
           // A borda é o que "vende a ilusão de aresta física".
           border: `2px solid ${dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.75)'}`,
-          borderRadius: size * 0.75,
-          padding: `${size * 0.5}px ${size * 0.95}px`,
+          // Raio quase-pílula. No Reel de referência o card é um comprimido
+          // arredondado, não um retângulo com cantos suavizados — é o que lhe
+          // dá o ar de etiqueta e não de caixa de texto. O `size*1.5` faz o
+          // raio exceder a meia-altura num card de uma linha, e o browser
+          // satura em pílula perfeita.
+          borderRadius: size * 1.5,
+          padding: `${size * 0.52}px ${size * 1.1}px`,
           boxShadow: '0 28px 70px rgba(0,0,0,0.35)',
           textAlign: 'center',
-          // Largura máxima em vez de nowrap: com `nowrap` um card de três
-          // palavras estica de borda a borda e cobre o rosto — foi o que o
-          // still mostrou com "CÂMERA EM MOVIMENTO". 62% da largura deixa o
-          // sujeito respirar e ainda cabe uma frase curta em duas linhas.
-          maxWidth: '48%',
+          // UMA LINHA, sempre. A pílula é definida pelo raio saturado na
+          // meia-altura; assim que o texto quebra em duas linhas o card cresce
+          // em altura, o raio deixa de saturar e a forma vira caixa — medido no
+          // still com "Sem tripé" (9 caracteres). O limite de comprimento é
+          // imposto na entrada (`MAX_CHARS_CARD`), não aqui: cortar a palavra
+          // no CSS esconderia o erro em vez de apontá-lo.
+          whiteSpace: 'nowrap',
+          maxWidth: '52%',
           fontFamily,
         }}
       >
@@ -154,25 +189,18 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
         <div
           style={{
             fontSize: size * 1.15,
-            fontWeight: 800,
+            fontWeight: 700,
             lineHeight: 1.08,
-            letterSpacing: -1,
+            // Espaçamento POSITIVO. O -1 anterior comprimia as letras, que é o
+            // gesto de manchete; num card pequeno de uma palavra o efeito é o
+            // oposto — a referência abre levemente o termo, o que o faz ler
+            // como etiqueta e sustenta o peso visual da pílula.
+            letterSpacing: 0.5,
             color: dark ? '#fff' : '#0c111c',
           }}
         >
           {h.text}
         </div>
-        {/* Régua de acento sob o termo: fecha o card e dá a ele um eixo, em
-            vez de deixar o texto flutuando na caixa. */}
-        <div
-          style={{
-            height: 4,
-            width: `${interpolate(enter, [0, 1], [0, 100], {extrapolateRight: 'clamp'})}%`,
-            background: accent,
-            borderRadius: 2,
-            marginTop: size * 0.34,
-          }}
-        />
       </div>
     </AbsoluteFill>
   );
