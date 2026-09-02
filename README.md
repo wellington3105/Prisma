@@ -11,7 +11,36 @@ horizontal** (YouTube).
 **A transcrição roda na sua máquina.** Nenhuma chave de API, nenhuma cota,
 nenhum limite de tamanho.
 
+## Instalacao
+
+Um comando. Ele instala as dependencias (uv, ffmpeg, Node) e a skill.
+
+**Windows — PowerShell**
+
+```powershell
+irm https://raw.githubusercontent.com/wellington3105/Prisma/main/install.ps1 | iex
+```
+
+**Windows — CMD**
+
+```bat
+curl -sSL https://raw.githubusercontent.com/wellington3105/Prisma/main/install.cmd -o %TEMP%\prisma.cmd && %TEMP%\prisma.cmd
+```
+
+**macOS e Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wellington3105/Prisma/main/install.sh | sh
+```
+
+Nada exige administrador: tudo vai para o escopo do usuario. Se voce ja tem as
+dependencias, o instalador as reconhece e vai direto para a skill.
+
+Abra um terminal novo depois de instalar — o PATH so e relido em processos
+novos. Confira com `prisma` no seu agente.
+
 ---
+
 
 ## Instalação
 
