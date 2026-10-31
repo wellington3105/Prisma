@@ -42,6 +42,8 @@ for _s in (_sys.stdout, _sys.stderr):
 
 import argparse
 import array
+import atexit
+import http.client
 import json
 import re
 import shutil
@@ -49,6 +51,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -209,9 +212,107 @@ class RenderJob:
                 self.started_at = time.time()
 
 
+class Studio:
+    """The Prisma EDITOR: HyperFrames Studio, hosted by this server.
+
+    Prisma decides the edit; the person edits it live in Studio, which the UI
+    embeds in its Editor tab. This owns the Studio process (one per session),
+    started lazily the first time the tab asks, and the export that (re)builds
+    the HyperFrames project from the Prisma edit (export_hyperframes.py).
+    """
+
+    def __init__(self, root: Path, port: int) -> None:
+        self.root = root
+        self.port = port
+        self.proc: "subprocess.Popen | None" = None
+        self.dir: "Path | None" = None
+        self.lock = threading.Lock()
+        self.export = {"running": False, "ok": None, "log": "", "finishedAt": 0.0}
+
+    def _project(self) -> "Path | None":
+        try:
+            state = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        p = state.get("hyperframes")
+        if not p:
+            return None
+        p = Path(p)
+        p = p if p.is_absolute() else (self.root / p)
+        return p if (p / "hyperframes.json").exists() else None
+
+    def _alive(self) -> bool:
+        # the PORT answering is what counts: on Windows a Studio started by a
+        # previous run can outlive it (the .cmd shim dies, node does not)
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=1):
+                return True
+        except OSError:
+            return False
+
+    def status(self, start: bool = False) -> dict:
+        proj = self._project()
+        with self.lock:
+            if proj and start and (self.dir != proj or not self._alive()):
+                self._start(proj)
+            up = self._alive()
+            return {
+                "available": bool(proj),
+                "project": str(proj) if proj else None,
+                "running": up,
+                # same origin as Prisma: relayed by Handler._proxy
+                "url": f"/?hfstudio=1#project/{proj.name}" if (proj and up) else None,
+                "export": dict(self.export),
+            }
+
+    def _start(self, proj: Path) -> None:
+        if self._alive() and self.dir in (None, proj):
+            self.dir = proj  # a live Studio from an earlier run: reuse it
+            return
+        self.stop()
+        hf = shutil.which("hyperframes")
+        if not hf:
+            self.export["log"] = "HyperFrames CLI não encontrado (npm i -g hyperframes@latest)"
+            return
+        self.proc = subprocess.Popen(
+            [hf, "preview", str(proj), "--port", str(self.port), "--no-open"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.dir = proj
+        for _ in range(60):  # the Studio bundle takes a few seconds to come up
+            if self._alive():
+                return
+            time.sleep(0.5)
+
+    def stop(self) -> None:
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+        self.proc = None
+
+    def run_export(self, force: bool) -> dict:
+        with self.lock:
+            if self.export["running"]:
+                return dict(self.export)
+            self.export = {"running": True, "ok": None, "log": "", "finishedAt": 0.0}
+
+        def job() -> None:
+            script = Path(__file__).resolve().parent / "export_hyperframes.py"
+            cmd = [sys.executable, str(script), str(self.root)] + (["--force"] if force else [])
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            with self.lock:
+                self.export = {"running": False, "ok": r.returncode == 0,
+                               "log": ((r.stdout or "") + (r.stderr or ""))[-1500:],
+                               "finishedAt": time.time()}
+                if r.returncode == 0:
+                    self.stop()  # a fresh project: restart Studio on it next time the tab asks
+
+        threading.Thread(target=job, daemon=True).start()
+        return dict(self.export)
+
+
 class Handler(BaseHTTPRequestHandler):
     root: Path  # set on the class by main()
     render_job: "RenderJob | None" = None  # set on the class by main()
+    studio: "Studio | None" = None  # set on the class by main()
     protocol_version = "HTTP/1.1"
 
     # ---- helpers ----
@@ -283,14 +384,78 @@ class Handler(BaseHTTPRequestHandler):
         p = self._safe(self.root, rel)
         return p if p and p.exists() else None
 
+    # ---- the Editor, served SAME-ORIGIN ----
+    # The Studio used to be framed from its own port. A cross-origin frame is a
+    # second-class citizen in Chrome — its media stayed silent inside Prisma even
+    # with `allow="autoplay"`, while the same Studio opened alone had sound. So
+    # every request that is not one of Prisma's own is relayed to the Studio
+    # process: one origin, one page, nothing for the browser to fence off.
+    HOP = {"connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade",
+           "proxy-authorization", "proxy-authenticate", "host", "content-length"}
+
+    def _proxy(self) -> None:
+        st = self.studio
+        if not st:
+            self._json({"error": "unknown route"}, 404)
+            return
+        if not st._alive():
+            st.status(start=True)
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else None
+        headers = {k: v for k, v in self.headers.items() if k.lower() not in self.HOP}
+        conn = http.client.HTTPConnection("127.0.0.1", st.port, timeout=600)
+        try:
+            conn.request(self.command, self.path, body=body, headers=headers)
+            resp = conn.getresponse()
+        except OSError as e:
+            self._json({"error": f"editor indisponível: {e}"}, 502)
+            return
+        self.send_response(resp.status, resp.reason)
+        for k, v in resp.getheaders():
+            if k.lower() not in self.HOP:
+                self.send_header(k, v)
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        stream = "text/event-stream" in (resp.getheader("Content-Type") or "")
+        try:
+            while True:
+                chunk = resp.read1(65536) if stream else resp.read(65536)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                if stream:
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            conn.close()
+
+    def do_PUT(self) -> None:  # noqa: N802
+        self._proxy()
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._proxy()
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._proxy()
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._proxy()
+
     # ---- routes ----
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path.split("?", 1)[0]
-        if path in ("/", "/index.html"):
+        path, _, query = self.path.partition("?")
+        if path in ("/", "/index.html") and "hfstudio" in query:
+            self._proxy()  # the Editor's own entry page
+        elif path in ("/", "/index.html"):
             self._send_file(APP_DIR / "index.html")
         elif path.startswith("/assets/"):
             p = self._safe(APP_DIR, path[len("/assets/"):])
-            self._send_file(p) if p else self._json({"error": "bad path"}, 400)
+            if p and p.exists():
+                self._send_file(p)
+            else:
+                self._proxy()  # the Studio's own bundle lives under /assets/ too
         elif path.startswith("/media/"):
             p = self._safe(self.root, path[len("/media/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
@@ -301,13 +466,19 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/render":
             self._json(self.render_job.status() if self.render_job
                        else {"error": "render indisponível"})
+        elif path == "/api/studio":
+            self._json(self.studio.status(start=True) if self.studio else {"available": False})
         elif path == "/api/state":
             self._state()
         else:
-            self._json({"error": "unknown route"}, 404)
+            self._proxy()
 
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.split("?", 1)[0]
+        if route == "/api/studio/export":
+            force = "force=1" in (self.path.split("?", 1)[1] if "?" in self.path else "")
+            self._json(self.studio.run_export(force) if self.studio else {"error": "studio indisponível"})
+            return
         if route == "/api/render":
             if not self.render_job:
                 self._json({"error": "render indisponível"}, 503)
@@ -315,7 +486,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.render_job.request())
             return
         if route != "/api/save":
-            self._json({"error": "unknown route"}, 404)
+            self._proxy()  # the Editor saving its own edits
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -350,9 +521,10 @@ class Handler(BaseHTTPRequestHandler):
         a new render changes it. The UI says so through its own stale pill, which
         keys off edit-data.json being newer than the video.
         """
+        applied_caps = self._apply_captions(body)
         ed_data = (body.get("editData") or {})
         if not ed_data:
-            return []
+            return applied_caps
         try:
             state = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
             rel = state.get("editData")
@@ -384,6 +556,25 @@ class Handler(BaseHTTPRequestHandler):
                 if before != after:
                     applied.append(f"{key}[{ref}]")
 
+        # keyword glass cards (GlassCard.tsx): same contract as the inserts, keyed
+        # on `at` (the moment the word is said) + `dur`
+        cards = (ed.get("highlights") or {}).get("items") or []
+        for item in ed_data.get("highlights") or []:
+            ref = item.get("ref")
+            if not isinstance(ref, int) or not (0 <= ref < len(cards)):
+                continue
+            entry = cards[ref]
+            before = (entry.get("at"), entry.get("dur"))
+            for k in ("at", "dur"):
+                if isinstance(item.get(k), (int, float)):
+                    entry[k] = item[k]
+            if item.get("delete"):
+                entry["_deleted"] = True
+            if before != (entry.get("at"), entry.get("dur")) or item.get("delete"):
+                applied.append(f"highlights[{ref}]")
+        if any(c.get("_deleted") for c in cards):
+            ed["highlights"]["items"] = [c for c in cards if not c.get("_deleted")]
+
         hook = ed_data.get("hook")
         if hook and isinstance(hook.get("endSec"), (int, float)) and ed.get("hook"):
             if ed["hook"].get("endSec") != hook["endSec"]:
@@ -400,7 +591,50 @@ class Handler(BaseHTTPRequestHandler):
             t = p.with_suffix(".tmp")
             t.write_text(json.dumps(ed, ensure_ascii=False, indent=2), encoding="utf-8")
             t.replace(p)
-        return applied
+        return applied_caps + applied
+
+    def _apply_captions(self, body: dict) -> list:
+        """Write the caption words the user edited straight into captions.json.
+
+        Text and word timings are the user's decision, not an editorial call, so
+        the same rule as the insert timings applies: the file agrees with the
+        timeline the moment they save. Validated hard — a malformed list would
+        break the Remotion bundle, so anything off keeps the old file.
+        """
+        words = body.get("captions")
+        if not isinstance(words, list) or not words:
+            return []
+        clean = []
+        for w in words:
+            try:
+                text = str(w["text"]).strip()
+                a, b = int(w["startMs"]), int(w["endMs"])
+            except (KeyError, TypeError, ValueError):
+                return []
+            if not text or b <= a or a < 0:
+                return []
+            clean.append({"text": text, "startMs": a, "endMs": b})
+        clean.sort(key=lambda w: w["startMs"])
+        try:
+            state = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+            p = self._safe(self.root, state.get("captions") or "")
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not p or not p.exists():
+            return []
+        try:
+            old = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            old = None
+        # keep any extra per-word fields the generator wrote (speakerId…) when
+        # the word survived unchanged
+        if isinstance(old, list):
+            extra = {(o.get("text"), o.get("startMs")): o for o in old if isinstance(o, dict)}
+            clean = [{**extra.get((w["text"], w["startMs"]), {}), **w} for w in clean]
+        t = p.with_suffix(".tmp")
+        t.write_text(json.dumps(clean, ensure_ascii=False), encoding="utf-8")
+        t.replace(p)
+        return [f"captions ({len(clean)} palavras)"]
 
     # ---- dynamic bits ----
     def _state(self) -> None:
@@ -545,6 +779,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Prisma preview interface server")
     ap.add_argument("--root", type=Path, required=True, help="the session <edit> dir")
     ap.add_argument("--port", type=int, default=4820)
+    ap.add_argument("--studio-port", type=int, default=0,
+                    help="port for the embedded HyperFrames Studio (default: --port + 10)")
     args = ap.parse_args()
 
     root = args.root.resolve()
@@ -556,7 +792,11 @@ def main() -> None:
 
     Handler.root = root
     Handler.render_job = RenderJob(root)
+    # the Editor tab's Studio runs next to this server; stopped with it
+    Handler.studio = Studio(root, args.studio_port or args.port + 10)
+    atexit.register(Handler.studio.stop)
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    srv.daemon_threads = True  # the Editor's live event stream must not block shutdown
     print(f"Prisma preview → http://127.0.0.1:{args.port}  (root: {root})", flush=True)
     srv.serve_forever()
 

@@ -12,6 +12,8 @@
      of exactly these faces (see STACK_MIXED in StackedCaptions.tsx). -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;0,800;0,900;1,900&family=Playfair+Display:ital,wght@1,900&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=Libre+Baskerville:wght@700&family=Inter:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
+<!-- HyperFrames Studio timeline skin — see PLANO-TIMELINE.md, Etapa 1 -->
+<link rel="stylesheet" href="/assets/timeline-skin.css">
 </head>
 <body>
 
@@ -33,11 +35,18 @@
 </header>
 
 <nav id="tabs" class="tabs">
-  <button class="tab active" data-tab="1"><span class="tab-num">FASE 1</span> Corte</button>
+  <!-- ONE editor: the HyperFrames Studio (EDITOR tab) is where the cut and the
+       overlays are edited. The legacy Fase 1 / Fase 2 review timelines stay in
+       the code but are hidden — two editors on the same project confused whose
+       changes were real. -->
+  <button class="tab hidden" data-tab="1"><span class="tab-num">FASE 1</span> Corte</button>
   <!-- the gate lives BETWEEN the phases and stays reachable: changing the style
        after Fase 2 exists is a normal thing to want, not a one-shot decision -->
   <button class="tab" data-tab="style">Estilo</button>
-  <button class="tab" data-tab="2"><span class="tab-num">FASE 2</span> Visual</button>
+  <button class="tab hidden" data-tab="2"><span class="tab-num">FASE 2</span> Visual</button>
+  <!-- the Prisma EDITOR: HyperFrames Studio embedded — every take, caption,
+       card and image as its own clip, edited live -->
+  <button class="tab tab-editor active" data-tab="editor"><span class="tab-num">EDITOR</span> Timeline</button>
 </nav>
 
 <main>
@@ -97,6 +106,26 @@
     </div>
   </section>
 
+  <section id="editorPane" class="editor-pane hidden">
+    <div class="editor-bar">
+      <span class="editor-title">Editor · HyperFrames Studio</span>
+      <span class="editor-hint">Cada take, legenda, card e imagem é um clipe. Edite direto; o <b>Export</b> do editor gera o vídeo final.</span>
+      <div class="spacer"></div>
+      <button id="editorRebuild" class="btn ghost small hidden" title="Gera o editor de novo a partir do Prisma (apaga edições feitas aqui)">Recriar do Prisma</button>
+    </div>
+    <div id="editorMsg" class="editor-msg">
+      <p id="editorMsgText">Carregando o editor…</p>
+      <button id="editorBuild" class="btn primary hidden">Criar editor desta edição</button>
+    </div>
+    <iframe id="editorFrame" class="editor-frame hidden" title="HyperFrames Studio" allow="autoplay; clipboard-read; clipboard-write; fullscreen; encrypted-media"></iframe>
+    <!-- `autoplay` is what lets the editor make SOUND: the Studio runs on another
+         port, so it is a cross-origin frame, and Chrome denies media with sound
+         to a cross-origin frame unless the parent delegates it. Without it the
+         picture played and the audio stayed silent inside Prisma (while the
+         same Studio opened alone had sound). -->
+
+  </section>
+
   <div id="stage" class="stage">
   <section id="playerWrap" class="player-wrap">
     <div class="player-frame glass">
@@ -119,10 +148,21 @@
       <button id="btnMark" class="btn mark" title="Marcar IN / OUT (tecla M)">
         <span id="markIcon"></span><span id="markText">IN</span>
       </button>
+      <span class="tb-sep"></span>
+      <button id="btnUndo" class="btn icon tb" title="Desfazer (Ctrl+Z)"></button>
+      <button id="btnRedo" class="btn icon tb" title="Refazer (Ctrl+Shift+Z)"></button>
+      <span class="tb-sep"></span>
+      <button id="btnToolSelect" class="btn icon tb" title="Seleção (V)"></button>
+      <button id="btnToolRazor" class="btn icon tb" title="Lâmina — clique corta ali (B) · ⇧ corta vídeo e legenda"></button>
+      <button id="btnSplit" class="btn icon tb" title="Dividir na agulha (S)"></button>
+      <span class="tb-sep"></span>
+      <button id="btnSnap" class="btn icon tb" title="Snap na agulha e nas bordas (N)"></button>
       <div class="spacer"></div>
-      <span class="dim small">zoom</span>
+      <button id="btnFit" class="btn icon tb" title="Ajustar à janela"></button>
+      <button id="btnZoomOut" class="btn icon tb" title="Afastar"></button>
       <input id="zoom" type="range" min="0" max="100" value="0" title="Zoom da timeline (centrado na agulha)">
-      <button id="btnFit" class="btn ghost small" title="Ajustar à janela">fit</button>
+      <button id="btnZoomIn" class="btn icon tb" title="Aproximar"></button>
+      <span id="zoomRead" class="zoom-read">Fit</span>
     </div>
 
     <section id="timelinePanel" class="timeline-panel glass">
@@ -132,21 +172,21 @@
         <div class="lane ruler-lane"><canvas id="ruler"></canvas></div>
       </div>
       <div class="track" id="trkNotes">
-        <div class="track-label"><span class="tl-chip notes" data-icon="notes" title="Marcações de ajuste"></span></div>
+        <div class="track-label"><span class="tl-chip notes" data-icon="notes" title="Marcações de ajuste"></span><span class="tl-name">Marcações</span></div>
         <div class="lane notes-lane" id="laneNotes"></div>
       </div>
       <div id="trkCaptions" class="track hidden">
-        <div class="track-label"><span class="tl-chip teal" data-icon="captions" title="Legendas"></span></div>
+        <div class="track-label"><span class="tl-chip teal" data-icon="captions" title="Legendas"></span><span class="tl-name">Legendas</span><span class="tl-count" id="countCaptions"></span></div>
         <div class="lane" id="laneCaptions"></div>
       </div>
       <div class="track">
-        <div class="track-label"><span class="tl-chip" data-icon="video" title="Vídeo"></span></div>
+        <div class="track-label"><span class="tl-chip" data-icon="video" title="Vídeo"></span><span class="tl-name">V1 · Vídeo</span><span class="tl-count" id="countVideo"></span></div>
         <div class="lane tall" id="laneVideo"></div>
       </div>
       <div class="track">
         <div class="track-label">
           <button class="tl-chip olive" id="jcutToggle" data-icon="audio"
-                  title="Áudio (mix)" aria-expanded="false"></button>
+                  title="Áudio (mix)" aria-expanded="false"></button><span class="tl-name">A · Áudio</span>
         </div>
         <div class="lane" id="laneAudio"><canvas id="wave"></canvas></div>
       </div>
@@ -157,11 +197,11 @@
            rides position:sticky on .track-label, and an overflow ancestor would
            make a new scroll container and strand it. -->
       <div class="track jcut-track hidden" id="trkAudioA1">
-        <div class="track-label"><span class="tl-chip olive ghost" data-icon="audio" title="A1"></span></div>
+        <div class="track-label"><span class="tl-chip olive ghost" data-icon="audio" title="A1"></span><span class="tl-name">A1</span></div>
         <div class="lane jcut-lane" id="laneAudioA1"></div>
       </div>
       <div class="track jcut-track hidden" id="trkAudioA2">
-        <div class="track-label"><span class="tl-chip olive ghost" data-icon="audio" title="A2"></span></div>
+        <div class="track-label"><span class="tl-chip olive ghost" data-icon="audio" title="A2"></span><span class="tl-name">A2</span></div>
         <div class="lane jcut-lane" id="laneAudioA2"></div>
       </div>
       <div id="insertTracks" class="hidden"></div>
@@ -183,14 +223,19 @@
     <button id="helpClose" class="btn ghost small" title="Fechar">✕</button>
   </div>
   <ul class="help-list">
-    <li><span><kbd>espaço</kbd></span><span>play / pause</span></li>
-    <li><span><kbd>←</kbd><kbd>→</kbd></span><span>frame a frame · com <kbd>shift</kbd>, 1 segundo</span></li>
+    <li><span><kbd>espaço</kbd> <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd></span><span>play / pause · volta 1s / para / play</span></li>
+    <li><span><kbd>←</kbd><kbd>→</kbd></span><span>frame a frame · com <kbd>shift</kbd>, 10 frames</span></li>
+    <li><span><kbd>V</kbd> <kbd>B</kbd></span><span>ferramenta <b>Seleção</b> / <b>Lâmina</b> (clique corta ali; <kbd>shift</kbd> corta vídeo e legenda)</span></li>
+    <li><span><kbd>S</kbd></span><span>divide na agulha — a legenda selecionada, ou o clipe de vídeo</span></li>
+    <li><span><kbd>delete</kbd></span><span>apaga o que está selecionado (clipe, legenda ou card)</span></li>
+    <li><span><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span>desfaz · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> refaz</span></li>
+    <li><span><kbd>N</kbd></span><span>liga/desliga o snap na agulha e nas bordas</span></li>
     <li><span><kbd>M</kbd></span><span>marca <b>IN</b>, depois <b>OUT</b> — aí escreva o ajuste</span></li>
-    <li><span><kbd>delete</kbd></span><span>remove o take selecionado</span></li>
-    <li><span>arrastar</span><span>as <b>bordas</b> de um take ajustam o corte</span></li>
-    <li><span>duplo-clique</span><span>num take desfaz o ajuste dele</span></li>
+    <li><span>arrastar</span><span>as <b>bordas</b> aparam; o <b>meio</b> move legendas, cards e imagens</span></li>
+    <li><span>duplo-clique</span><span>na legenda edita o texto · no clipe desfaz o ajuste dele</span></li>
+    <li><span>corte manual</span><span><kbd>S</kbd> no início, <kbd>S</kbd> no fim, selecione o pedaço e <kbd>delete</kbd></span></li>
     <li><span>pinça</span><span>zoom no trackpad, onde está o cursor</span></li>
-    <li><span>barra de zoom</span><span>amplia a partir da agulha</span></li>
+    <li><span>barra de zoom</span><span>amplia a partir da agulha · <b>−</b>/<b>+</b> dobram ou dividem</span></li>
   </ul>
 </div>
 

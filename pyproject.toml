@@ -30,6 +30,7 @@ dependencies = [
     # Shot-boundary detection for the reframe pipeline (scene_detection.py).
     # Pure Python + OpenCV, no model download — light enough to ship in base.
     "scenedetect",
+    "librosa>=0.11.0",
 ]
 
 [project.optional-dependencies]

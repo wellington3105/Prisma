@@ -59,7 +59,7 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
 | `elements.flashCut` | `transitions[]` in edit-data.json — see "Flash na transição" |
 | `elements.shaderCut` | allows `displace`/`refract` in `transitions[]`. **OFF → only flash/whip-pan/glitch**, no canvas. See "Transição com distorção" |
-| `elements.glassPanel` | the `glass` block — refracting WebGL panel. **OFF → omit the block entirely**, no canvas is created. See "Painel de vidro" |
+| `elements.glassPanel` | **palavras em destaque numa moldura de vidro-prisma 3D** — `highlights` com `variant: "prism"` (GlassCard.tsx). NÃO é o bloco `glass` (retângulo vazio que só refrata o vídeo — reprovado). **OFF → omita `highlights`**. Ver "Painel de vidro (3D) = palavras na moldura prisma" |
 | `elements.springIn` | inserts get `enter:"spring"`. **OFF → omit `enter`**, which is the historical cubic ease and renders byte-identically |
 | `elements.brollFull` | permission to promote inserts to `fit:"cover"` — see "Inserts — card vs full frame". **OFF → every insert stays a card**, never write `fit` |
 | `elements.musicAI` | Phase 3 via `treblo_music.py`; OFF → deliver with voice only |
@@ -202,7 +202,10 @@ the historical card, so old `edit-data.json` files keep working.
   component picks `OffthreadVideo` or `Img` from the extension, and video
   inserts render muted — the cut owns the audio bed.
 
-- **`frame`** — `"glass"` desenha o insert **refratado através do painel de
+- **`frame`** — ⚠ medido em 2026-10-30 (projeto Volvo XC60): `"glass"` NÃO
+  desenha o insert dentro do vidro — o painel aparece refratando o vídeo de base
+  e o clipe some. Não use; para "palavra no vidro" use `highlights` prism.
+  Texto original: `"glass"` desenha o insert **refratado através do painel de
   vidro** em vez de como card chapado, na mesma posição (780×500 a 90px do
   topo). Exige `elements.glassPanel` marcado; ajuste fino em
   `glass: {intensity, dispersion, radius}`. Não combina com `fit`: o painel tem
@@ -435,7 +438,46 @@ Precisão alcançada: **22.9px de mediana** entre a posição renderizada e a
 projeção prevista. O resíduo é distorção radial da lente (k=0.17), que o Three
 não modela — suficiente para ancorar.
 
-### Painel de vidro (`elements.glassPanel`)
+### Painel de vidro (3D) = palavras na moldura prisma (`elements.glassPanel`)
+
+**Leia isto antes de tocar no vidro.** O usuário pediu várias vezes, e foi
+corrigido vídeo a vídeo em vez de aqui — por isso voltava errado: o checkbox
+"Painel de vidro (3D)" significa **a palavra-chave da fala numa moldura de
+vidro-prisma sofisticada**, não um retângulo de vidro vazio sobre o vídeo.
+
+```json
+"highlights": {
+  "enabled": true, "variant": "prism", "fontFamily": "Poppins", "offsetS": 0.8,
+  "items": [
+    {"text": "Híbrido T8", "label": "motor", "at": 10.2, "x": 0.5, "y": 0.34, "accent": "#ff5200"},
+    {"text": "462 cv", "label": "potência", "at": 14.6}
+  ]
+}
+```
+
+- **Como é** (`GlassCard.tsx`, variante `prism`, o padrão): placa fosca com
+  `backdrop-filter` (o fundo desfoca DE VERDADE atrás dela), espessura (a mesma
+  placa recuada em Z), perspectiva que gira devagar a vida inteira, aro
+  iridescente FINO em anel (máscara — sem ela o arco-íris vaza e a placa vira
+  adesivo), franja R/B de dispersão na sombra e no glifo, reflexo especular que
+  varre a placa na entrada e de novo no meio, rótulo com traço na cor `accent`.
+- **O que escrever:** `text` ≤16 caracteres, o TERMO, não a frase; `label` dá o
+  contexto ("motor", "potência", "preço"). Texto REFORÇA, não duplica: o card
+  entra `offsetS` (0.8s) depois da palavra, quando a legenda já passou.
+- **Cadência:** 1–3 por Reel de 30s; ≥3s na tela; nunca atravessando uma
+  transição (`transitions[]`) — termine antes do flash/whip.
+- **Onde:** centro-alto (`x 0.5, y 0.30–0.36`) sobre B-roll em tela cheia lê
+  melhor (vidro sobre o produto); sobre o rosto, desloque para o lado livre.
+- **Escolha dos termos:** `highlight_words.py` sugere candidatos (número, nome
+  próprio, substantivo longo); a decisão é editorial.
+- `variant: "pill"` mantém a etiqueta 2D antiga.
+
+**O bloco `glass` (refração WebGL de um retângulo) NÃO é este elemento.** Usado
+sozinho ele mostra um painel vazio refratando o rosto — reprovado.
+`render_phase2.py` avisa `REPROVADO` quando encontra `glass` sem `highlights`.
+A descrição técnica do bloco segue abaixo só como referência do shader.
+
+#### (referência técnica) bloco `glass` — refração WebGL
 
 A real refraction pass in WebGL — the footage behind the panel is displaced,
 not just blurred, and splits into R/G/B at the rim. `backdrop-filter` cannot do
@@ -781,7 +823,68 @@ licensing, prints license+author), then `google_images.py` (needs
 `GOOGLE_API_KEY`+`GOOGLE_CSE_ID`, mind rights — pass `--rights cc`, flag
 licensing to the user for logos/celebrities). Keep photographer credits.
 
-## Phase 3 — soundtrack (short-form)
+## Acabamento: VFX nos takes + motion HTML (HyperFrames)
+
+Pedido do usuário (2026-10-30): "não é só gráfico em HTML, são vários efeitos —
+analise as skills e insira onde cabe". O que entra, e onde:
+
+- **VFX nos takes de B-roll** — `film_look.py` em cada take ANTES de virar insert,
+  CONTIDO: externos de carro `{"bloom":.05,"halation":.05,"streaks":.25,"streak_threshold":.93,
+  "sweep":{"at":.4,"dur":1.8,"angle":24,"width":.2,"strength":.4},"curve":.2}` (reflexo
+  na pintura + flare dos faróis); interiores SEM film_look. A 1ª versão (bloom/halation .18,
+  curve .5) criou névoa cinza sobre o carro branco e estourou os faróis — reprovada.
+  Grade antes, preservando a cor original (ver color-multitake.md "Quando NÃO neutralizar").
+- **Motion HTML onde a fala traz um DADO ou um RECURSO** — cenas HyperFrames no
+  mesmo vidro-prisma das molduras: `helpers/hf_motion_scenes.py` (count, rank,
+  compare, awd, lane, shield, brand, chips). Antes de escrever uma cena nova,
+  procure no catálogo: `npx hyperframes catalog --query "<efeito em inglês>" --json`
+  (skill `hyperframes-registry`). Os blocos de luz do catálogo (`light-leak`,
+  `vfx-anamorphic-flare`) são cenas-demo 1920×1080, não overlays — para luz sobre
+  o carro o `film_look` é o caminho.
+- **Montagem**: projeto `hf/` por vídeo — `assets/base.mp4` = render do Remotion,
+  cenas em `compositions/`, `index.html` de `hf_motion_scenes.index_html()`;
+  `npx hyperframes check --json` (0 erros) → `npx hyperframes render -o hf/out.mp4
+  --fps 30 --crf 14` → `deliver_mix.py <edit> --picture hf/out.mp4 --tone-ref
+  hf/assets/base.mp4 --tone-times <tempos sem cena>`.
+- **Duas armadilhas MEDIDAS (XC60):**
+  1. o render do Remotion vem yuvj420p/pc marcado **bt470bg**; o Chrome do HyperFrames
+     lê a matriz ao pé da letra e escurece. Gere `base.mp4` com a MESMA conversão da
+     entrega: `scale=in_range=full:out_range=limited,format=yuv420p,setparams=…bt709…:range=tv`,
+     `-g 30` (keyframe a cada 1s, senão o seek congela).
+  2. mesmo assim o render do HyperFrames sai ~2–3% mais escuro, neutro nos 3 canais
+     (hf ≈ 0,98·base − 1). `deliver_mix --tone-ref` mede e aplica a inversa só no Y.
+     Sem isso o tom que o usuário aprovou muda na última etapa.
+- `check` acusa `text_not_painted` quando um degradê com `background-clip:text` é
+  aplicado a um texto cujas letras são `inline-block` — as letras somem. O brilho
+  correndo vai numa SEGUNDA camada do mesmo texto (ver `brand()`).
+
+
+**Entrega com mixagem de verdade → `deliver_mix.py` (rode DEPOIS de `render_phase2.py`).**
+A entrega do render_phase2 re-mixa a voz crua, a trilha num volume fixo e só os
+cliques de transição. Medido no projeto Volvo XC60 (2026-10-30, gravação dentro
+de carro): voz com 8,5 dB entre fala e ruído e agudos 10–14 dB abaixo dos graves;
+trilha 33 dB abaixo da voz (inaudível); SFX que somem no celular. O helper:
+
+- **Voz** (`edit-data.json` `audio.voiceChain`): `noisy` = afftdn → highpass 110 →
+  −5 dB @240 → +5 dB @3 kHz → +4 dB shelf 7 kHz → expansor → compressor 3:1 →
+  de-esser → limiter (fala/ruído na pausa 8,5 → 27 dB); `clean` = só EQ +
+  compressor. A latência da cadeia é MEDIDA e compensada (afftdn ≈ 30 ms).
+- **Trilha** (`soundtrack.raw` = a faixa SEM carve, `offset` em s): ducking em duas
+  camadas com a voz tratada como chave (banda 250–2200 Hz ratio 3, espectro
+  inteiro ratio 1.6) e volume CALIBRADO por loudness integrado (LUFS, faixa
+  inteira): `musicBelowVoice` 9 LU antes do ducking → ~15 LU abaixo da fala no
+  resultado; grave da trilha −3 dB < 140 Hz. A v1 calibrava só a banda da voz e
+  deixou a trilha só 5,6 LU abaixo no conjunto e mais alta que a voz nos graves —
+  reprovada ("música alta, as vozes têm que aparecer mais"). Use `beat_map.py` e escolha o `offset`
+  que põe o drop no primeiro corte de B-roll.
+- **SFX** (`sfxCues` [{src, at, volume}] + `transitions[].sfx`): prefira o kit
+  "audível no celular" do `sfx_synth.py` — `impact` (abertura/drop), `glass_ping`
+  (entrada de cada moldura prisma), `whoosh_air`, `whip_hit` (whip-pan),
+  `riser_tonal` (termina na batida). `sub_drop` e `ui_tick` sozinhos somem no
+  alto-falante do celular. Os .wav também estão em `public/sfx` do template.
+- loudnorm −14 LUFS / −1 dBTP em duas passadas. `--stems` grava voz/trilha/sfx
+  separados — confira com números (trilha ≈ 15 LU abaixo da voz em `ebur128`, sync ≈ 33 ms).
+
 
 Ask: **AI-generated** (Treblo) or **local file** (copy to `public/trilha.mp3`).
 

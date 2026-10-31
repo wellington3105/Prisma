@@ -186,6 +186,79 @@ def call_whisperx(
             "language": detected, "_aligned": aligned_ok}
 
 
+def call_whisperx_windowed(
+    audio_path: Path,
+    language: str | None = None,
+    model_name: str = WHISPERX_MODEL,
+    window: float = 20.0,
+    overlap: float = 3.0,
+    verbose: bool = False,
+) -> dict:
+    """Same output as call_whisperx, but transcribed in short overlapping windows.
+
+    Why it exists — measured on a 7-min, 4-voice source recorded in a moving car
+    (Volvo XC60, 2026-10-30): one pass over the whole file placed words up to
+    0.7s early and INVENTED phrases that are not in the audio; cut edges taken
+    from those times decapitated words while verify_cut.py passed clean. The same
+    model on an isolated few-second window placed every word correctly. Over a
+    long, noisy, multi-voice file the decoder completes sentences from context
+    and the alignment drifts; a short window gives it neither chance.
+
+    Each word is kept only from the window where its CENTRE falls in the inner
+    part (overlap/2 away from either edge), so a word straddling a window edge is
+    taken from the neighbour that saw it whole. Use it for noisy / multi-speaker
+    sources; a clean solo talking head does fine with the single pass.
+    """
+    import whisperx
+    import numpy as np  # noqa: F401  (whisperx returns numpy arrays)
+
+    device, compute_type = _whisperx_device()
+    audio = whisperx.load_audio(str(audio_path))
+    sr = 16000
+    total = len(audio) / sr
+    vad_options = {"vad_onset": 0.200, "vad_offset": 0.250}
+    try:
+        model = whisperx.load_model(model_name, device, compute_type=compute_type,
+                                    language=language, vad_options=vad_options)
+    except TypeError:
+        model = whisperx.load_model(model_name, device, compute_type=compute_type, language=language)
+    align = {}
+    words: list[dict] = []
+    detected = language or ""
+    step = window - overlap
+    t = 0.0
+    while t < total:
+        w0, w1 = t, min(total, t + window)
+        lo = w0 + (overlap / 2 if w0 > 0 else -1.0)
+        hi = w1 - (overlap / 2 if w1 < total else -1.0)
+        chunk = audio[int(w0 * sr): int(w1 * sr)]
+        res = model.transcribe(chunk, batch_size=8, language=language)
+        lang = res.get("language") or language or ""
+        detected = detected or lang
+        if lang not in align:
+            try:
+                align[lang] = whisperx.load_align_model(language_code=lang, device=device)
+            except Exception:
+                align[lang] = None
+        if align[lang] is not None:
+            am, meta = align[lang]
+            res = whisperx.align(res["segments"], am, meta, chunk, device, return_char_alignments=False)
+        for seg in res.get("segments", []):
+            for w in seg.get("words") or []:
+                txt = (w.get("word") or "").strip()
+                if not txt or w.get("start") is None or w.get("end") is None:
+                    continue
+                s, e = w0 + float(w["start"]), w0 + float(w["end"])
+                if lo <= (s + e) / 2 < hi:
+                    words.append({"word": txt, "start": s, "end": e})
+        if verbose:
+            print(f"    window {w0:6.1f}–{w1:6.1f}s  ({len(words)} words so far)", flush=True)
+        t += step
+    words.sort(key=lambda w: w["start"])
+    return {"words": words, "text": " ".join(w["word"] for w in words),
+            "language": detected, "_aligned": all(v is not None for v in align.values())}
+
+
 def extract_audio(video_path: Path, dest: Path) -> None:
     """Extract mono 16kHz 64kbps MP3. Whisper is trained on 16kHz mono, so the
     lossy encode costs nothing in transcript quality and keeps the file small.
@@ -252,6 +325,8 @@ def transcribe_one(
     num_speakers: int | None = None,
     model: str = WHISPERX_MODEL,
     verbose: bool = True,
+    window: float | None = None,
+    force: bool = False,
 ) -> Path:
     """Transcribe a single video. Returns path to transcript JSON.
 
@@ -266,10 +341,16 @@ def transcribe_one(
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     out_path = transcripts_dir / f"{video.stem}.json"
 
-    if out_path.exists():
+    if out_path.exists() and not force:
         if verbose:
             print(f"cached: {out_path.name}")
         return out_path
+    if out_path.exists() and force:
+        # Keep the previous pass for comparison, OUTSIDE transcripts/ so
+        # pack_transcripts.py does not read two transcripts of one source.
+        bak = edit_dir / "transcripts_prev"
+        bak.mkdir(exist_ok=True)
+        out_path.replace(bak / out_path.name)
 
     duration = _probe_duration(video)
     if verbose:
@@ -283,9 +364,13 @@ def transcribe_one(
         if verbose:
             size_mb = audio.stat().st_size / (1024 * 1024)
             print(f"  transcribing {video.stem}.mp3 ({size_mb:.1f} MB)", flush=True)
-        raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose)
+        if window:
+            raw = call_whisperx_windowed(audio, language=language, model_name=model,
+                                         window=window, verbose=verbose)
+        else:
+            raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose)
 
-    tag = f"whisperx/{model}" + ("" if raw.get("_aligned", True) else "/UNALIGNED")
+    tag = f"whisperx/{model}" + (f"/window{window:g}" if window else "") +         ("" if raw.get("_aligned", True) else "/UNALIGNED")
     payload = {
         "language_code": raw.get("language", ""),
         "language": raw.get("language", ""),
@@ -332,6 +417,16 @@ def main() -> None:
         help=f"Whisper model (default: {WHISPERX_MODEL}). "
              "large-v3-turbo is faster and slightly less accurate.",
     )
+    ap.add_argument(
+        "--window",
+        type=float,
+        default=None,
+        help="Transcribe in overlapping windows of N seconds (e.g. 20). Use on "
+             "noisy / multi-voice sources, where one pass over the whole file "
+             "drifts word times and invents phrases.",
+    )
+    ap.add_argument("--force", action="store_true",
+                    help="Re-transcribe even if cached (previous kept in transcripts_prev/).")
     args = ap.parse_args()
 
     video = args.video.resolve()
@@ -344,6 +439,8 @@ def main() -> None:
         language=args.language,
         num_speakers=args.num_speakers,
         model=args.model,
+        window=args.window,
+        force=args.force,
     )
 
 

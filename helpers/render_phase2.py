@@ -207,15 +207,25 @@ def check_camadas_vazias(ed: dict, pub: pathlib.Path | None = None) -> list[str]
                     f"CARD LONGO: \"{txt}\" tem {len(txt.split())} palavras. "
                     f"Um card se lê num relance; acima de {MAX_PALAVRAS_CARD} "
                     f"ele quebra em várias linhas e vira parágrafo")
-            elif len(txt) > MAX_CHARS_CARD:
+            elif len(txt) > (16 if (hl.get("variant") or "prism") == "prism" else MAX_CHARS_CARD):
+                teto = 16 if (hl.get("variant") or "prism") == "prism" else MAX_CHARS_CARD
                 avisos.append(
                     f"CARD ESTICADO: \"{txt}\" tem {len(txt)} caracteres "
-                    f"(teto {MAX_CHARS_CARD}). A pílula é de UMA linha — o "
+                    f"(teto {teto}). O card é de UMA linha — o "
                     f"componente encolhe a fonte para caber, mas o termo fica "
                     f"menor que os outros. Prefira um sinônimo curto")
 
-    for chave, rotulo in (("glass", "glass"), ("tracked", "tracked"),
-                          ("text3d", "text3d")):
+    # O bloco `glass` sozinho é o retângulo que só refrata o vídeo, SEM palavra.
+    # Reprovado pelo usuário várias vezes (último: projeto Volvo XC60,
+    # 2026-10-30): "Painel de vidro (3D)" no Estilo significa a PALAVRA em
+    # destaque numa moldura de vidro-prisma — `highlights` com variant "prism".
+    if (ed.get("glass") or {}).get("enabled") and not (ed.get("highlights") or {}).get("enabled"):
+        avisos.append(
+            "REPROVADO: bloco `glass` sem `highlights` — é o painel vazio que só "
+            "refrata o vídeo. 'Painel de vidro (3D)' = palavras em destaque na "
+            "moldura prisma: escreva `highlights` (variant prism) e remova `glass`")
+
+    for chave, rotulo in (("tracked", "tracked"), ("text3d", "text3d")):
         bloco = ed.get(chave) or {}
         if bloco.get("enabled") and not (bloco.get("items") or bloco.get("objects")):
             avisos.append(f"VAZIO: {rotulo} ligado sem itens — nada aparecerá")
@@ -388,9 +398,16 @@ def main() -> None:
     # Remotion writes yuvj420p / range=pc / primaries=bt470bg (PAL). Copying that
     # into the delivery shifts hue on a compliant player and crushes blacks on one
     # that ignores the range tag — the Phase-1 grade drifts at the last step.
+    # Ending fade (edit-data.json `fadeOut`, seconds): picture to black and the
+    # whole mix to silence over the same span, so the video does not stop dead
+    # on its last frame. Applied here, after the render, because it is a
+    # property of the delivery — no template code involved.
+    fade_out = float(ed.get("fadeOut") or 0)
+    fade_out = min(max(fade_out, 0.0), vd / 2) if fade_out else 0.0
+    vfade = f",fade=t=out:st={vd - fade_out:.3f}:d={fade_out:.3f}" if fade_out else ""
     parts = [
         "[0:v]scale=in_range=full:out_range=limited,format=yuv420p,"
-        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[vid]",
+        f"setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv{vfade}[vid]",
         f"[1:a]adelay={video_lag_ms}:all=1[v]",
     ]
     mix = ["[v]"]
@@ -412,7 +429,10 @@ def main() -> None:
         last = "[mix]"
     else:
         last = "[v]"
-    parts.append(f"{last}loudnorm=I=-14:TP=-1:LRA=11[out]")
+    # after loudnorm: fading first would lower the measured loudness and the
+    # normaliser would push the whole video up to compensate
+    afade = (f",afade=t=out:st={vd - fade_out:.3f}:d={fade_out:.3f}" if fade_out else "")
+    parts.append(f"{last}loudnorm=I=-14:TP=-1:LRA=11{afade}[out]")
 
     final = edit / "final.mp4"
     run(["ffmpeg", "-y", "-v", "error", *inputs,

@@ -86,16 +86,124 @@ type CutFlash = {
 const OVERLAY_TYPES = ['flash', 'whip-pan', 'glitch'];
 const isOverlayCut = (t: CutFlash) => OVERLAY_TYPES.includes(t.type ?? 'flash');
 
+// Escurecimento suave no topo, para o headline ler sobre fundo claro (céu,
+// teto do carro). Janelas em edit-data.json `scrims`, nunca hardcoded.
+type Scrim = {start: number; end: number; opacity?: number; height?: number};
+// Selo fixo da série ("XC60 • 2/9"), em edit-data.json `seriesBadge`.
+type SeriesBadge = {text: string; index: string; start?: number; end?: number; accent?: string};
+
 export const CustomGraphics: React.FC = () => {
-  const d = editData as {splitInserts?: SplitInsert[]; transitions?: CutFlash[]};
+  const d = editData as {
+    splitInserts?: SplitInsert[];
+    transitions?: CutFlash[];
+    scrims?: Scrim[];
+    seriesBadge?: SeriesBadge;
+  };
   const splits = d.splitInserts ?? [];
   const flashes = d.transitions ?? [];
+  const scrims = d.scrims ?? [];
   return (
     <>
+      {scrims.map((s, i) => (
+        <TopScrim key={`scrim${i}`} {...s} />
+      ))}
       {splits.length ? <SplitScreen items={splits} /> : null}
       {flashes.length ? <CutSfx items={flashes} /> : null}
       {flashes.length ? <CutFlashes items={flashes} /> : null}
+      {d.seriesBadge ? <SeriesBadgeView {...d.seriesBadge} /> : null}
     </>
+  );
+};
+
+const TopScrim: React.FC<Scrim> = ({start, end, opacity = 0.55, height = 0.42}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const t = frame / fps;
+  const a = interpolate(t, [start, start + 0.25, end - 0.35, end], [0, 1, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.bezier(0.37, 0, 0.63, 1),
+  });
+  if (a <= 0) return null;
+  return (
+    <AbsoluteFill style={{pointerEvents: 'none'}}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 0,
+          height: `${height * 100}%`,
+          opacity: a * opacity,
+          background:
+            'linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 45%, rgba(0,0,0,0) 100%)',
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+const SeriesBadgeView: React.FC<SeriesBadge> = ({text, index, start = 0, end, accent = '#ff5200'}) => {
+  const frame = useCurrentFrame();
+  const {fps, durationInFrames} = useVideoConfig();
+  const t = frame / fps;
+  const stop = end ?? durationInFrames / fps;
+  // Some enquanto um insert em CARD ocupa o topo (mesma zona do selo). Lê os
+  // inserts do edit-data — sem tempos duplicados aqui.
+  const cards = ((editData as {inserts?: {start: number; end: number; fit?: string}[]}).inserts ?? []).filter(
+    (it) => !it.fit || it.fit === 'card',
+  );
+  const hide = cards.reduce(
+    (m, it) =>
+      Math.max(
+        m,
+        interpolate(t, [it.start - 0.25, it.start, it.end, it.end + 0.25], [0, 1, 1, 0], {
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp',
+        }),
+      ),
+    0,
+  );
+  const a =
+    interpolate(t, [start, start + 0.4, stop - 0.3, stop], [0, 1, 1, 0], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+    }) *
+    (1 - hide);
+  const slide = interpolate(t, [start, start + 0.5], [-24, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.bezier(0.16, 1, 0.3, 1),
+  });
+  if (a <= 0) return null;
+  return (
+    <AbsoluteFill style={{pointerEvents: 'none'}}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 56,
+          top: 168,
+          transform: `translateX(${slide}px)`,
+          opacity: a,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          padding: '12px 22px 12px 18px',
+          borderRadius: 999,
+          background: 'rgba(14,14,16,0.62)',
+          border: '1px solid rgba(255,255,255,0.14)',
+          backdropFilter: 'blur(10px)',
+          fontFamily,
+          color: '#fff',
+          fontSize: 30,
+          letterSpacing: '0.04em',
+        }}
+      >
+        <div style={{width: 12, height: 12, borderRadius: 6, background: accent, boxShadow: `0 0 14px ${accent}`}} />
+        <span style={{fontWeight: 600}}>{text}</span>
+        <span style={{fontWeight: 400, opacity: 0.7}}>{index}</span>
+      </div>
+    </AbsoluteFill>
   );
 };
 

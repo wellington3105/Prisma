@@ -63,9 +63,22 @@ export type Highlight = {
   dark?: boolean;
 };
 
+/**
+ * `prism` (o padrão) — a moldura de VIDRO-PRISMA 3D: placa de vidro com
+ * espessura, em perspectiva que gira devagar, aro iridescente que dispersa a
+ * luz em RGB e um reflexo especular que varre a superfície na entrada. É o que
+ * o usuário pediu para "Painel de vidro (3D)" no Estilo — a PALAVRA em destaque
+ * numa moldura sofisticada — e substitui o painel vazio que só refratava o
+ * vídeo (reprovado: um retângulo translúcido sem palavra não comunica nada).
+ *
+ * `pill` — a etiqueta 2D original, mantida para quem já a usa.
+ */
+export type CardVariant = 'prism' | 'pill';
+
 export type HighlightBlock = {
   enabled: boolean;
   items: Highlight[];
+  variant?: CardVariant;
   /** Fonte do card. Mesma família da headline mantém o vídeo coeso. */
   fontFamily?: string;
   /** Atraso após a palavra ser dita, em segundos. Default 0.8.
@@ -206,6 +219,160 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
   );
 };
 
+/** Teto do prisma: a placa é mais larga que a pílula (até 80% do quadro). */
+const MAX_CHARS_PRISM = 16;
+
+const Prism: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({h, total, fontFamily}) => {
+  const frame = useCurrentFrame();
+  const {fps, width} = useVideoConfig();
+  const accent = h.accent ?? '#ff5200';
+
+  // Entrada: a placa GIRA para dentro do plano (rotateY −38° → −14°) enquanto
+  // cresce — lê como objeto físico chegando, não como pop-up. Mola só na
+  // entrada; a saída é interpolate para pousar no último frame (D4).
+  const enter = spring({frame, fps, config: {damping: 14, mass: 0.6}, durationInFrames: 16});
+  const exit = interpolate(frame, [total - 9, total], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const vis = Math.min(enter, exit);
+  // Deriva lenta durante a vida inteira: é o que faz o 3D ler como 3D. Uma
+  // placa parada em perspectiva parece desenhada torta; girando 8° ela tem volume.
+  const drift = interpolate(frame, [0, total], [0, 1], {extrapolateRight: 'clamp'});
+  const rotY = -14 + drift * 8 - (1 - enter) * 24 + (1 - exit) * 18;
+  const rotX = 7 - drift * 3 - (1 - enter) * 8;
+  const scale = 0.86 + 0.14 * vis;
+
+  const excesso = Math.max(1, h.text.length / MAX_CHARS_PRISM);
+  const size = (width * 0.052) / excesso;
+  const R = size * 0.62;
+
+  // O aro iridescente gira devagar: a luz "corre" pela aresta do prisma.
+  const ang = (frame * 3.2) % 360;
+  // Reflexo especular: varre a placa uma vez na entrada e, mais suave, no meio.
+  const sweep = (from: number, len: number) =>
+    interpolate(frame, [from, from + len], [-140, 140], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const s1 = sweep(5, 16);
+  const s2 = sweep(Math.round(total * 0.55), 22);
+
+  return (
+    <AbsoluteFill style={{pointerEvents: 'none', perspective: 1500}}>
+      <div
+        style={{
+          position: 'absolute',
+          left: `${(h.x ?? 0.5) * 100}%`,
+          top: `${(h.y ?? 0.3) * 100}%`,
+          transform: `translate(-50%,-50%) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${h.tilt ?? 0}deg) scale(${scale})`,
+          transformStyle: 'preserve-3d',
+          opacity: vis,
+          maxWidth: '82%',
+        }}
+      >
+        {/* Espessura: a mesma placa, recuada no eixo Z — a aresta que se vê de lado. */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: R,
+            transform: 'translateZ(-18px)',
+            background: 'linear-gradient(160deg, rgba(255,255,255,0.18), rgba(255,255,255,0.03))',
+            border: '1px solid rgba(255,255,255,0.18)',
+            boxShadow: '0 50px 90px rgba(0,0,0,0.5)',
+          }}
+        />
+        {/* Placa + aro. As franjas R/B deslocadas na sombra são a dispersão. */}
+        <div
+          style={{
+            position: 'relative',
+            borderRadius: R,
+            boxShadow: '-3px 0 14px rgba(255,50,110,0.22), 3px 0 14px rgba(50,150,255,0.24)',
+          }}
+        >
+          {/* Aro prisma: SÓ o anel. Sem a máscara o gradiente vaza para dentro
+              da placa e o vidro inteiro vira degradê arco-íris — foi o primeiro
+              still, e lê como adesivo, não como vidro. */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              padding: 2.5,
+              borderRadius: R,
+              background: `conic-gradient(from ${ang}deg, rgba(255,90,130,0.85), rgba(255,220,120,0.75), rgba(120,255,210,0.7), rgba(110,190,255,0.9), rgba(200,130,255,0.8), rgba(255,90,130,0.85))`,
+              WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+              WebkitMaskComposite: 'xor',
+              maskComposite: 'exclude',
+              zIndex: 2,
+            }}
+          />
+          <div
+            style={{
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: R,
+              padding: `${size * 0.5}px ${size * 0.95}px ${size * 0.58}px`,
+              backdropFilter: 'blur(16px) saturate(1.5) brightness(1.06)',
+              WebkitBackdropFilter: 'blur(16px) saturate(1.5) brightness(1.06)',
+              background:
+                'linear-gradient(135deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.07) 42%, rgba(14,18,28,0.42) 100%)',
+              boxShadow:
+                'inset 0 2px 0 rgba(255,255,255,0.65), inset 0 -2px 0 rgba(0,0,0,0.35), inset 0 0 30px rgba(255,255,255,0.10)',
+              whiteSpace: 'nowrap',
+              fontFamily,
+              textAlign: 'left',
+            }}
+          >
+            {/* Reflexo especular — a luz atravessando o vidro. */}
+            {[s1, s2].map((x, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  top: '-40%',
+                  bottom: '-40%',
+                  left: `${x}%`,
+                  width: '45%',
+                  transform: 'rotate(18deg)',
+                  background: `linear-gradient(90deg, transparent, rgba(255,255,255,${i ? 0.22 : 0.5}), transparent)`,
+                  mixBlendMode: 'screen',
+                }}
+              />
+            ))}
+            {h.label ? (
+              <div style={{display: 'flex', alignItems: 'center', gap: size * 0.28, marginBottom: size * 0.16}}>
+                <div style={{width: size * 0.9, height: 3, borderRadius: 2, background: accent, boxShadow: `0 0 12px ${accent}`}} />
+                <div
+                  style={{
+                    fontSize: size * 0.46,
+                    fontWeight: 600,
+                    letterSpacing: size * 0.09,
+                    color: 'rgba(255,255,255,0.86)',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {h.label}
+                </div>
+              </div>
+            ) : null}
+            <div
+              style={{
+                position: 'relative',
+                fontSize: size * 1.22,
+                fontWeight: 800,
+                lineHeight: 1.04,
+                letterSpacing: 0.5,
+                color: '#fff',
+                // Dispersão também no glifo: franja vermelha à esquerda, azul à
+                // direita, sutil — é o "prisma" lido na própria palavra.
+                textShadow:
+                  '-1.5px 0 rgba(255,60,110,0.45), 1.5px 0 rgba(60,170,255,0.45), 0 4px 22px rgba(0,0,0,0.45)',
+              }}
+            >
+              {h.text}
+            </div>
+          </div>
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const GlassCards: React.FC<{spec: HighlightBlock}> = ({spec}) => {
   const {fps} = useVideoConfig();
   return (
@@ -227,7 +394,11 @@ export const GlassCards: React.FC<{spec: HighlightBlock}> = ({spec}) => {
             durationInFrames={total}
             layout="none"
           >
-            <One h={h} total={total} fontFamily={spec.fontFamily} />
+            {(spec.variant ?? 'prism') === 'prism' ? (
+              <Prism h={h} total={total} fontFamily={spec.fontFamily} />
+            ) : (
+              <One h={h} total={total} fontFamily={spec.fontFamily} />
+            )}
           </Sequence>
         );
       })}
