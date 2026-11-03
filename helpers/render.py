@@ -39,6 +39,7 @@ import os
 import re
 import subprocess
 import sys
+from array import array
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -527,17 +528,19 @@ def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -
 #
 # The tail trim is MEASURED, never blind. Cutting a fixed 2 frames off every take
 # would eventually decapitate a word on footage whose take ends tight — so the trim
-# is capped by the silence actually present at the end of that range, keeping 10ms.
+# is capped by the quiet actually present at the end of that range, keeping 10ms.
 
-# 16 frames a 30fps = ~530ms. O valor anterior era 5 frames (~165ms), e a
-# literatura de montagem é explícita: um J-cut de 4 frames "confunde mais do que
-# ajuda", e o mínimo útil é meio segundo. Abaixo disso o espectador não percebe
-# a antecipação do áudio — só sente o corte estranho, sem saber por quê.
-#
-# O teto é 1–2s; acima de 3s começa a estranhar por que o som não bate com a
-# imagem. 16f fica na entrada da faixa útil, que é o certo para um DEFAULT: o
-# J-cut deve ler como acabamento, não como efeito.
-JCUT_LEAD_FRAMES = 16
+# The lead is also CAPPED per seam by the quiet actually there. The overlap only
+# sums room tone while  lead <= (outgoing tail quiet left after the trim) +
+# (incoming head quiet). Past that, the incoming voice is laid on top of the
+# outgoing one. 16f (533ms) was tried as the default in 5b47734 ("the useful range
+# starts at half a second"). Measured on PPF X6 (2026-11-03, tight edges from
+# refine_edges.py): 16f summed the next take's voice over the end of the previous
+# one, and the transcript of the cut lost "ou qualquer parte" and garbled "700 mil".
+# 5f was clean. It was wrong for build_edl.py too: 0.18s of pad on each side is
+# 360ms of silence per seam, so 533ms of lead overlapped ~170ms of speech. The cap
+# makes a lead override safe: it buys antecipation only where there is room for it.
+JCUT_LEAD_FRAMES = 5
 JCUT_TAIL_TRIM_FRAMES = 2
 
 
@@ -560,79 +563,113 @@ def jcut_settings(edl: dict, fps: int) -> dict | None:
     }
 
 
-def trailing_silence(source: Path, start: float, end: float,
-                     noise_db: int = -35) -> float:
-    """Seconds of silence at the END of a source range. 0.0 if it ends in speech.
+# Edge quiet is measured the way refine_edges.py places the edges: an RMS envelope
+# of the VOICE band (250-3500 Hz), quiet = below the local floor + 6 dB. A fixed
+# -35 dB silencedetect read no silence at all on car footage (Cayenne, road noise
+# above -35 dB), which zeroed every lead and every tail trim.
+EDGE_SR = 16000
+EDGE_HOP = 0.010
+EDGE_CONTEXT = 1.2          # s of source on each side used to find the floor
+EDGE_ABOVE_FLOOR_DB = 6.0
 
-    This is what bounds the tail trim: we only ever remove what is already silent.
+
+def edge_quiet(source: Path, start: float, end: float) -> tuple[float, float]:
+    """(head, tail): seconds of quiet at the start and at the end of a source range.
+
+    0.0 on a side that opens/ends on voice. The tail bounds the tail trim (only what
+    is already quiet is ever removed); head + tail bound the J-cut lead of a seam.
     """
-    dur = end - start
+    t0 = max(0.0, start - EDGE_CONTEXT)
     r = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.6f}",
-         "-t", f"{dur:.6f}", "-i", str(source), "-vn",
-         "-af", f"silencedetect=noise={noise_db}dB:d=0.02", "-f", "null", "-"],
-        capture_output=True, text=True)
-    starts: list[float] = []
-    ends: list[float] = []
-    for line in r.stderr.splitlines():
-        if "silence_start:" in line:
-            try:
-                starts.append(float(line.rsplit("silence_start:", 1)[1].split()[0]))
-            except (ValueError, IndexError):
-                pass
-        elif "silence_end:" in line:
-            try:
-                ends.append(float(line.rsplit("silence_end:", 1)[1].split()[0]))
-            except (ValueError, IndexError):
-                pass
-    if not starts:
-        return 0.0
-    last = starts[-1]
-    # the range ends in silence only if no speech resumed after `last`
-    if any(e > last + 1e-6 and e < dur - 0.02 for e in ends):
-        return 0.0
-    return max(0.0, dur - last)
+        ["ffmpeg", "-v", "error", "-ss", f"{t0:.6f}",
+         "-t", f"{end + EDGE_CONTEXT - t0:.6f}", "-i", str(source), "-vn",
+         "-af", "highpass=f=250,highpass=f=250,lowpass=f=3500",
+         "-ac", "1", "-ar", str(EDGE_SR), "-f", "f32le", "-"],
+        capture_output=True)
+    pcm = array("f")
+    pcm.frombytes(r.stdout[: len(r.stdout) // 4 * 4])
+    n = int(EDGE_HOP * EDGE_SR)
+    env = []
+    for k in range(len(pcm) // n):
+        fr = pcm[k * n:(k + 1) * n]
+        env.append(20 * math.log10(math.sqrt(sum(x * x for x in fr) / n) + 1e-9))
+    if not env:
+        return 0.0, 0.0
+    floor = sorted(env)[int(0.15 * (len(env) - 1))]
+    thr = floor + EDGE_ABOVE_FLOOR_DB
+    i0 = int(round((start - t0) / EDGE_HOP))
+    i1 = min(len(env), int(round((end - t0) / EDGE_HOP)))
+    head = 0
+    while i0 + head < i1 and env[i0 + head] < thr:
+        head += 1
+    tail = 0
+    while i1 - 1 - tail >= i0 + head and env[i1 - 1 - tail] < thr:
+        tail += 1
+    return head * EDGE_HOP, tail * EDGE_HOP
 
 
 def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
-    """Work out each take's video range, audio range and output offsets."""
+    """Work out each take's video range, audio range and output offsets.
+
+    The lead is per seam: the configured lead, capped by the silence measured on
+    both sides of that seam so the two takes' voices never overlap.
+    """
     fps = cfg["fps"]
-    lead = cfg["lead_frames"] / fps
     ranges = edl["ranges"]
     sources = edl["sources"]
     n = len(ranges)
 
-    plan: list[dict] = []
-    a_off = v_off = 0.0
+    takes: list[dict] = []
     for i, r in enumerate(ranges):
         src = resolve_path(sources[r["source"]], edit_dir)
         start, end = float(r["start"]), float(r["end"])
 
+        quiet_head, quiet_tail = edge_quiet(src, start, end) if n > 1 else (0.0, 0.0)
         tail = 0.0
-        avail = trailing_silence(src, start, end) if i < n - 1 else None
+        avail = quiet_tail if i < n - 1 else None
         if avail is not None and cfg["tail_trim_frames"]:
             budget = max(0.0, avail - 0.010)          # keep 10ms of room tone
-            usable_frames = min(cfg["tail_trim_frames"], int(budget * fps))
+            usable_frames = min(cfg["tail_trim_frames"], int(budget * fps + 1e-6))
             tail = usable_frames / fps
+        head = quiet_head if i > 0 else None
+        takes.append({"src": src, "r": r, "start": start, "end": end,
+                      "tail": tail, "avail": avail, "head": head})
 
-        a_in, a_out = start, end - tail
-        v_in = start + (lead if i > 0 else 0.0)
+    # lead_frames[i] belongs to the seam INTO take i (0 for the first take).
+    lead_frames = [0] * n
+    for i in range(1, n):
+        prev, cur = takes[i - 1], takes[i]
+        room = max(0.0, prev["avail"] - prev["tail"]) + cur["head"]
+        lead_frames[i] = max(0, min(cfg["lead_frames"], int(room * fps + 1e-6)))
+
+    plan: list[dict] = []
+    a_off = v_off = 0.0
+    for i, t in enumerate(takes):
+        lead = lead_frames[i] / fps
+        a_in, a_out = t["start"], t["end"] - t["tail"]
+        v_in = t["start"] + lead
         v_out = a_out
         plan.append({
-            "i": i, "src": src, "range": r,
+            "i": i, "src": t["src"], "range": t["r"],
             "a_in": a_in, "a_out": a_out, "a_off": a_off,
             "v_in": v_in, "v_out": v_out, "v_off": v_off,
-            "tail_frames": round(tail * fps),
-            "silence_avail_ms": round(avail * 1000) if avail is not None else None,
+            "lead_frames": lead_frames[i],
+            "lead_capped": i > 0 and lead_frames[i] < cfg["lead_frames"],
+            "head_silence_ms": round(t["head"] * 1000) if t["head"] is not None else None,
+            "tail_frames": round(t["tail"] * fps),
+            "silence_avail_ms": round(t["avail"] * 1000) if t["avail"] is not None else None,
         })
         v_off += v_out - v_in
-        a_off += (a_out - a_in) - lead
+        # the NEXT take's audio starts its lead before this take's audio ends
+        next_lead = lead_frames[i + 1] / fps if i + 1 < n else 0.0
+        a_off += (a_out - a_in) - next_lead
     return plan
 
 
 def assemble_jcut(plan: list[dict], out_path: Path, edit_dir: Path) -> None:
     """Concat the video track, sum the offset audio tracks, mux them together."""
     work = edit_dir / "clips_graded"
+    work.mkdir(parents=True, exist_ok=True)   # --draft/--preview extract elsewhere
     vlist = edit_dir / "_concat_jcut.txt"
     vlist.write_text("".join(f"file '{p['video_path'].resolve()}'\n" for p in plan), encoding="utf-8")
 
@@ -695,8 +732,8 @@ def extract_and_assemble_jcut(
         jobs = max(1, min(4, (os.cpu_count() or 4) // 3))
 
     lead_ms = round(cfg["lead_frames"] / cfg["fps"] * 1000)
-    print(f"J-cut: áudio entra {cfg['lead_frames']}f ({lead_ms}ms) antes da imagem"
-          f"  ({len(plan)} takes, {jobs} paralelos)")
+    print(f"J-cut: áudio entra até {cfg['lead_frames']}f ({lead_ms}ms) antes da imagem,"
+          f" limitado pelo silêncio de cada emenda  ({len(plan)} takes, {jobs} paralelos)")
 
     def work(p: dict) -> dict:
         i, r = p["i"], p["range"]
@@ -723,9 +760,14 @@ def extract_and_assemble_jcut(
         elif p["silence_avail_ms"] is not None:
             tail_note = f"  cauda 0f (só {p['silence_avail_ms']}ms de silêncio)"
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
+        lead_note = ""
+        if i > 0:
+            lead_note = f"  lead {p['lead_frames']}f"
+            if p["lead_capped"]:
+                lead_note += f" (limitado: cabeça {p['head_silence_ms']}ms de silêncio)"
         print(f"  [{i:02d}] {r['source']}  v {p['v_in']:7.2f}-{p['v_out']:7.2f}"
               f"  a {p['a_in']:7.2f}-{p['a_out']:7.2f}"
-              f"  {r.get('beat') or ''}{tail_note}{gain_note}", flush=True)
+              f"  {r.get('beat') or ''}{lead_note}{tail_note}{gain_note}", flush=True)
         return p
 
     if jobs == 1 or len(plan) == 1:
@@ -1136,7 +1178,8 @@ def main() -> None:
         "--jcut-lead",
         type=int,
         default=None,
-        help=f"Frames the audio leads the picture (default {JCUT_LEAD_FRAMES}).",
+        help=f"Most frames the audio leads the picture (default {JCUT_LEAD_FRAMES}). "
+             "Each seam is capped by the silence measured on both sides of it.",
     )
     ap.add_argument(
         "--jcut-tail-trim",
@@ -1197,6 +1240,7 @@ def main() -> None:
              "video_duration": round(p["v_out"] - p["v_in"], 6),
              "audio_start_in_output": round(p["a_off"], 6),
              "audio_duration": round(p["a_out"] - p["a_in"], 6),
+             "lead_frames": p["lead_frames"],
              "tail_trim_frames": p["tail_frames"]}
             for p in plan
         ]

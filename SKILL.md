@@ -365,12 +365,24 @@ junction — the outgoing take keeps its trailing pad and the incoming one start
 with its own. Measured on a real 3-take edit: **130ms and 140ms**. Small on paper,
 a clear pause in the room. The J-cut removes it and the takes interlock.
 
-Defaults, in `render.py`: **lead 5 frames**, **tail trim up to 2 frames**.
+Defaults, in `render.py`: **lead up to 5 frames**, **tail trim up to 2 frames**.
 Override per project with `"jcut": {"lead_frames": N, "tail_trim_frames": N}`;
 turn it off with `"jcut": false` or `--no-jcut` (single-range EDLs skip it anyway).
 
-Three things that are not obvious:
+Four things that are not obvious:
 
+- **The lead is capped per seam by the silence actually there.** The overlap only
+  sums room tone while `lead ≤ outgoing tail silence (after the trim) + incoming
+  head silence`; past that the incoming voice is laid over the outgoing one.
+  `render.py` measures both sides the way `refine_edges.py` places edges (voice
+  band 250–3500 Hz, quiet = below local floor + 6 dB; a fixed −35 dB read no
+  silence at all under road noise) and lowers that seam's lead (log: `lead Nf
+  (limitado …)`), down to 0 = butt join on a seam with no room. Why 5 and not
+  16: 16f (533ms) was the default for a while. On PPF X6 (2026-11-03, tight
+  edges from `refine_edges.py`) it erased "ou qualquer parte" and garbled "700
+  mil" in the transcript of the cut; 5f was clean. Even `build_edl.py`'s 0.18s
+  pads give only 360ms of silence per seam. The real lead of each take is in
+  `jcut_timeline[].lead_frames`, so read it there, not from the EDL's `jcut` block.
 - **Tighten with the TAIL, not the lead.** A bigger lead also pushes the picture
   deeper into the incoming take's speech, which reads as entering mid-word. The
   tail trim tightens the seam and leaves the picture entry alone. Measured: 5f
@@ -498,9 +510,10 @@ For a single long source (longform), the main context can pick cuts directly fro
 `grade`: preset name, raw filter, or `"auto"` — normally whatever `detect_color.py`
 returned. `chapter` fields feed `chapters.py` (longform).
 
-`jcut`: optional. **Omit it and the J-cut runs with the defaults** (lead 5f, tail
-trim up to 2f); `false` butt-joins instead. After a render, `render.py` adds a
-`jcut_timeline` array — the real per-take video/audio offsets in the output. That
+`jcut`: optional. **Omit it and the J-cut runs with the defaults** (lead up to 5f,
+capped per seam by measured silence; tail trim up to 2f); `false` butt-joins
+instead. After a render, `render.py` adds a `jcut_timeline` array — the real
+per-take video/audio offsets and the lead each take actually got. That
 block, not `Σ(end−start)`, is the timeline Phase 2 and the preview must use.
 
 `gain_db`: per-range level correction in dB, sized by `voice_levels.py`. Applied at

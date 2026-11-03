@@ -70,7 +70,15 @@ def _cut_size():
 
 
 W, H = (int(ed["width"]), int(ed["height"])) if ed.get("width") and ed.get("height") else _cut_size()
-LEAD = (edl.get("jcut") or {}).get("lead_frames", 5) / FPS if edl.get("jcut") is not False else 0.0
+# render.py caps the J-cut lead per seam by the silence there, so the real lead of
+# each take is in jcut_timeline; the EDL's lead_frames is only the ceiling.
+_JT = edl.get("jcut_timeline") or []
+if len(_JT) == len(R) and all("lead_frames" in j for j in _JT):
+    LEADS = [j["lead_frames"] / FPS for j in _JT]
+else:
+    _l = (edl.get("jcut") or {}).get("lead_frames", 5) / FPS if edl.get("jcut") is not False else 0.0
+    LEADS = [0.0] + [_l] * (len(R) - 1)
+LEAD = max(LEADS)
 HF = shutil.which("hyperframes")
 if not HF:
     raise SystemExit("HyperFrames CLI não encontrado — instale com: npm i -g hyperframes@latest")
@@ -155,7 +163,7 @@ for key, path in (edl.get("sources") or {}).items():
 if seg:
     seams = [round(x["start"] * FPS) for x in seg]  # picture start frame of each take in cut.mp4
     assert len(seams) == len(R), (len(seams), len(R))
-    astart = [seams[k] / FPS - (LEAD if k else 0.0) for k in range(len(R))]  # audio start in cut
+    astart = [seams[k] / FPS - LEADS[k] for k in range(len(R))]  # audio start in cut
 else:
     astart = []
 
