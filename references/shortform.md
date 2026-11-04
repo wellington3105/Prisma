@@ -68,6 +68,32 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 An unchecked box is an explicit NO, not a silence. Copy the picks into
 `state.json` as `style`, clear `awaitingStyle`, delete `preview_style.json`.
 
+**Plano de inserts — o gate entre o Estilo e o edit-data (`inserts_plan.py`).**
+Whenever the video gets ≥1 insert, split image, B-roll or animated hook (style
+`limpa` with no inserts skips it): after the cut transcript exists (step 2 below)
+and BEFORE any insert is written into `edit-data.json`, write
+`<edit>/inserts_plan.json` with one item per insert — `i01…iNN`, time, format,
+**the concept in one sentence tied to what is being said**, the trigger word and
+its time, the camera intent — and a full **storyboard** (conceito, camadas,
+câmera, batidas, herói, vida, saída) for every item inside the hook. Then:
+1. `inserts_plan.py check <edit> --fix` — snaps edges that sit within 0.3 s of a
+   cut onto the cut time, flags < 2 s or > 12 s, a trigger outside its insert, a
+   hook item without storyboard, two same-format items overlapping;
+2. before showing it, re-read the hook asking: *does this concept come from THIS
+   line, or would it fit any video? does the energy match that moment? am I
+   repeating one formula (same entrance, same zoom, same impact)?*
+   (`references/motion-craft.md` for how each one moves);
+3. `inserts_plan.py show <edit>` → paste the numbered table into chat; the user
+   answers **by number** ("i04 tira", "i02 até 15s", "o resto ok") →
+   `strike` / `set` / `approve`;
+4. only when `show` says **aprovado**: `inserts_plan.py apply <edit>` writes
+   `inserts[]` / `splitInserts[]` with each `id`. It refuses an unapproved plan,
+   and refuses to drop edit-data items that are not in the plan without
+   `--replace`. The ids name the clips in the EDITOR (`split-i03`), so "i03" in
+   chat and in the Studio are the same thing.
+Changing a concept here costs one line; after the render it costs a round.
+(Adapted from `LeiteZ/fluxo-de-edicao`, motion-mapa stage, MIT.)
+
 1. **Scaffold (one command, never read the TSX):**
    ```bash
    uv run python helpers/scaffold_phase2.py <edit> --duration <segundos> --fps 30
@@ -841,6 +867,16 @@ analise as skills e insira onde cabe". O que entra, e onde:
   (skill `hyperframes-registry`). Os blocos de luz do catálogo (`light-leak`,
   `vfx-anamorphic-flare`) são cenas-demo 1920×1080, não overlays — para luz sobre
   o carro o `film_look` é o caminho.
+- **Onde a placa fica** (`top=` em px, padrão 360 = terço superior). **Preferência,
+  não regra:** a placa vai onde não cobre o rosto de quem fala. Olhe o quadro
+  (`hyperframes snapshot --at <t>`) antes de fixar. Medido no PPF X6 (2026-11-03),
+  1080×1920 com legenda `scatter` em ~0,72 da altura: sobre B-roll, 360; plano
+  médio com a cabeça baixa no quadro, **acima da cabeça** (~110); plano americano
+  com o rosto no alto, **no peito** (~830, a placa termina antes da legenda).
+  **Quando não há espaço** (close, ou cabeça no topo e legenda no peito), cobrir o
+  rosto é aceitável: prefira encaixar a cena num B-roll vizinho; se não houver,
+  mantenha a placa curta (≤3 s), numa frase em que a expressão não carrega o
+  sentido, e diga ao usuário qual cena cobre o rosto e por quê.
 - **Montagem**: projeto `hf/` por vídeo — `assets/base.mp4` = render do Remotion,
   cenas em `compositions/`, `index.html` de `hf_motion_scenes.index_html()`;
   `npx hyperframes check --json` (0 erros) → `npx hyperframes render -o hf/out.mp4
@@ -877,7 +913,8 @@ trilha 33 dB abaixo da voz (inaudível); SFX que somem no celular. O helper:
   deixou a trilha só 5,6 LU abaixo no conjunto e mais alta que a voz nos graves —
   reprovada ("música alta, as vozes têm que aparecer mais"). Use `beat_map.py` e escolha o `offset`
   que põe o drop no primeiro corte de B-roll.
-- **SFX** (`sfxCues` [{src, at, volume}] + `transitions[].sfx`): prefira o kit
+- **SFX** — regras de posicionamento em `references/sfx-craft.md` (o `at` é o
+  início do arquivo: desconte o tempo até o pico). (`sfxCues` [{src, at, volume}] + `transitions[].sfx`): prefira o kit
   "audível no celular" do `sfx_synth.py` — `impact` (abertura/drop), `glass_ping`
   (entrada de cada moldura prisma), `whoosh_air`, `whip_hit` (whip-pan),
   `riser_tonal` (termina na batida). `sub_drop` e `ui_tick` sozinhos somem no
@@ -886,7 +923,10 @@ trilha 33 dB abaixo da voz (inaudível); SFX que somem no celular. O helper:
   separados — confira com números (trilha ≈ 15 LU abaixo da voz em `ebur128`, sync ≈ 33 ms).
 
 
-Ask: **AI-generated** (Treblo) or **local file** (copy to `public/trilha.mp3`).
+Ask: **AI-generated** (Treblo), **Epidemic Sound catalog** (licensed, with stems
+and an exact-length edit — `epidemic_music.py`, workflow in
+`references/soundtrack.md` "Catálogo licenciado") or **local file** (copy to
+`public/trilha.mp3`).
 
 **Writing the Treblo prompt — derive it from the video's context, and ask for
 MUSIC, not a texture.** Read the cut transcript: what's the topic, energy and
@@ -1065,7 +1105,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental) · **`epidemic_music.py`** (Epidemic Sound catalog via its MCP: `search` → `fit` to the cut's length or `download` full/stem; `sfx` / `sfx-download`).
 
 ---
 
@@ -1081,6 +1121,12 @@ pelo caminho sem chave e diga o que muda.
 | `PEXELS_API_KEY` | imagens/vídeos ilustrativos | Wikimedia Commons cobre a maioria |
 | `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | marcas, pessoas e logos específicos | Wikimedia é o fallback |
 | `TREBLO_API_KEY` | trilha sonora composta por IA (Fase 3) | trilha só a partir de arquivo local |
+| `EPIDEMIC_SOUND_MCP_API_KEY` | trilha + SFX do catálogo Epidemic Sound (Fase 3; exige assinatura paga para baixar) | Treblo ou arquivo local |
+
+A chave do Epidemic é criada pelo próprio usuário em
+**https://www.epidemicsound.com/account/api-keys** (tipo *MCP Server*). Prefira a
+variável de ambiente do Windows (`setx`) — ela serve ao helper e ao MCP da sessão
+ao mesmo tempo; o `.env` só serve ao helper.
 
 ### Como o usuário cria a chave do Treblo (trilha com IA)
 

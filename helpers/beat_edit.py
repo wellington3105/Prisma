@@ -228,7 +228,11 @@ def main() -> None:
     out = a.out
     for d in ["assets/video", "assets/audio", "compositions"]:
         (out / d).mkdir(parents=True, exist_ok=True)
+    _sys.path.insert(0, str(HERE))
+    from hf_version import recorded, stamp
+    prev = recorded(out)  # um projeto refeito mantém a versão com que nasceu
     (out / "package.json").write_text(json.dumps(PKG, indent=2), encoding="utf-8")
+    stamp(out, prev)      # troca o @latest dos scripts pela versão fixa
     (out / "hyperframes.json").write_text(json.dumps(HFJSON, indent=2), encoding="utf-8")
     music = base / plan["music"]
     shutil.copy(music, out / "assets/audio" / music.name)
@@ -343,20 +347,35 @@ def main() -> None:
     # ---- sound design: whoosh on whips/zoom, bass impact on flashes, glitch on rgb-split ----
     if plan.get("sfx", True):
         lib = HERE.parent.parent / "media-use/audio/assets/sfx"
+        kit = HERE.parent / "assets/shortform/public/sfx"
+        # flash: impact.wav do kit (D9, 2026-11-03). O impact-bass-1 antigo é um
+        # drone de sub de 2 s em −1 dB de 0,1 a 1,0 s: em fone/TV cobre voz e
+        # música por 2 s; no celular sobra o ataque fino. Mesmo volume → mesmo
+        # ataque na banda do celular (−13,0 vs −13,4 dB). Alinhado pelo ATAQUE
+        # ("start"), não pelo pico: o pico de 0,05 s é o sub; por ele o transiente
+        # soava 50 ms ANTES do flash (medido no mix) — áudio adiantado se percebe
+        # a partir de ~45 ms (ITU-R BT.1359); atrasado, só a partir de ~125 ms.
         pick = {"whip": ("whoosh-short.mp3", -0.16, 0.55), "zoom": ("whoosh-cinematic.mp3", -0.30, 0.5),
-                "flash": ("impact-bass-1.mp3", -0.02, 0.8), "rgb-split": ("glitch-1.mp3", 0.0, 0.45),
+                "flash": (kit / "impact.wav", "start", 0.8), "rgb-split": ("glitch-1.mp3", 0.0, 0.45),
                 "shake": ("impact-bass-2.mp3", -0.02, 0.6),
                 "speed": ("whoosh.mp3", -0.22, 0.5)}
         n, lanes = 0, []          # lanes: end time per audio track, so cues never overlap on one track
-        cap = {"whip": 0.9, "zoom": 1.2, "flash": 2.2, "rgb-split": 0.8, "shake": 1.5, "speed": 0.8}
+        cap = {"whip": 0.9, "zoom": 1.2, "flash": 1.1, "rgb-split": 0.8, "shake": 1.5, "speed": 0.8}
         for s in shots[1:]:
             key = "whip" if s["tr"].startswith("whip-") else s["tr"]
-            if key not in pick or not (lib / pick[key][0]).exists():
+            if key not in pick:
                 continue
-            fn, off, vol = pick[key]
-            shutil.copy(lib / fn, out / "assets/audio" / fn)
+            src, off, vol = pick[key]
+            src = Path(src) if Path(src).is_absolute() else lib / src
+            if not src.exists():
+                continue
+            fn = src.name
+            if isinstance(off, str):   # alinhamento medido no arquivo (sfx_peak), não suposto
+                from sfx_peak import shift
+                off = -shift(src, off)
+            shutil.copy(src, out / "assets/audio" / fn)
             d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-                                      str(lib / fn)], capture_output=True, text=True).stdout.strip() or 1)
+                                      str(src)], capture_output=True, text=True).stdout.strip() or 1)
             st = max(0.0, s["start"] + off)
             d = min(d, cap[key], total - st)
             lane = next((j for j, e in enumerate(lanes) if e <= st), None)

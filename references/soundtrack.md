@@ -56,6 +56,63 @@ não impulso de algoritmo. São objetivos diferentes; escolha sabendo disso.
 
 ---
 
+> **Efeitos sonoros:** onde entra som, qual, alinhamento pelo pico e quando usar
+> o kit ou o Epidemic estão em `references/sfx-craft.md`. Leia antes de escrever
+> `sfxCues` — o `at` é o início do arquivo, não o golpe.
+
+## Catálogo licenciado — Epidemic Sound (`epidemic_music.py`)
+
+Terceira fonte de trilha, ao lado de Treblo (gera) e arquivo local. O catálogo
+é de música composta e licenciada pela assinatura do usuário — o caminho quando
+a marca quer trilha de produção real, com stems, e não uma faixa gerada.
+
+Fala com o **MCP oficial** (`https://www.epidemicsound.com/a/mcp-service/mcp`)
+por HTTP — o helper não depende do MCP estar carregado na sessão. Chave:
+`EPIDEMIC_SOUND_MCP_API_KEY` (env, `.env` da raiz da skill, ou `.env` do diretório
+atual ou de um pai). É a chave de **MCP Server** (Account → API keys), não a do
+Developer Portal: cada uma só funciona no próprio produto, e o 401 não diz qual
+foi o erro.
+
+**Fluxo:**
+1. **Buscar pela descrição, não por um gênero.** A busca é semântica: escreva o
+   que o vídeo precisa ("warm hopeful acoustic for a family brand story") e
+   filtre BPM pela tabela acima. Com narração, prefira resultados com tag
+   **`no vocals`** — o catálogo devolve a versão com letra e a "(Instrumental
+   Version)" da mesma faixa lado a lado.
+   ```bash
+   uv run python helpers/epidemic_music.py search "calm minimal lo-fi keys for a health explainer" --bpm 70-90 --min-s 60 -n 6 --json edit/verify/epidemic.json
+   ```
+   Cada resultado traz um `preview` mp3: deixe o usuário ouvir 2–3 candidatos
+   antes de baixar — escolher trilha é gosto, não métrica.
+2. **Ajustar à duração do corte** com a edição do próprio Epidemic (`fit`): ela
+   reestrutura a faixa para terminar num final real, em vez de um fade cortando
+   a frase musical. `--duration` = duração do `cut.mp4`. `--pin START-END@OFFSET`
+   põe um trecho da original (o refrão, o drop) num ponto exato da edição — use
+   o beat/hit do vídeo como OFFSET. Limite: 300s; acima disso, `download` e
+   `music_carve.py` como sempre.
+   ```bash
+   uv run python helpers/epidemic_music.py fit <id> --duration 47.2 --pin 62.0-70.0@15.0 -o remotion/public/trilha.mp3
+   ```
+   A edição sai como mix único (sem stems), mesmo com `skipStems` falso.
+   Medido 2026-11-03 (Misty Blue, `--duration 30`): 30,000s exatos, MP3 320k /
+   48 kHz estéreo, e um final de verdade — de −14 dB no meio para −52 dB nos
+   últimos 0,5s. O job leva ~1 min; se o download falhar, `--job <id>` retoma
+   sem criar outra edição.
+3. **Ou baixar inteira / um stem:** `download <id> -o … [--stem INSTRUMENTS|BASS|DRUMS]`.
+   `INSTRUMENTS` sem bateria é um fundo mais limpo sob fala densa que o mix
+   cheio. Os links assinados expiram — o helper baixa na hora.
+4. **SFX reais** quando o kit sintetizado não basta: `sfx "whoosh transition"` →
+   `sfx-download <id> -o remotion/public/sfx/<nome>.mp3`. Os do `sfx_synth.py`
+   continuam sendo o padrão para o celular (energia em 150 Hz–8 kHz); confira um
+   SFX do catálogo no alto-falante do celular antes de trocar o kit.
+5. **Registrar no `media_ledger.py`** — o helper imprime a linha pronta ao baixar.
+   A licença vale enquanto a assinatura cobre o uso; o ledger é como se responde
+   "de onde veio essa faixa" num projeto de meses atrás.
+
+Daqui em diante é igual a qualquer trilha: `music_carve.py` → `deliver_mix.py`.
+
+---
+
 ## Como escrever o briefing (Treblo)
 
 O `treblo_music.py` já emoldura como peça instrumental composta e proíbe SFX e

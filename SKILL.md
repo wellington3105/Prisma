@@ -54,7 +54,8 @@ cached, so reuse an approved EDL and skip `cut.mp4`/preview.
     ├── cut.mp4                  ← PHASE 1 output: clean graded cut (approval artifact)
     ├── verify/                  ← montages / flagged-boundary views
     ├── captions.srt + chapters.txt   ← longform deliverables
-    ├── final.mp4                ← delivered render (Phase 2 + 3, loudnorm'd)
+    ├── final.mp4                ← the LATEST delivery (hardlink to the newest final_vNN.mp4)
+    ├── final_vNN.mp4            ← every delivery, never overwritten (deliveries.py; listed in state.json)
     └── remotion/                ← Remotion project (Phase 2 + 3)
         ├── public/              ← cut.mp4, edit-data.json (THE edit), captions.json,
         │                          track.json, segments.json, pexels/ web/ brand/, sfx/, trilha.mp3
@@ -79,9 +80,21 @@ Helpers live in `helpers/`, resolved relative to this SKILL.md (usually `~/.clau
 
 Phase 1:
 - **`ingest_url.py <url> --dest <videos_dir> [--section 12:00-25:30] [--max-height 1080]`** — edit from a link: yt-dlp → MP4 (≤1080p) straight into the videos dir; from there it's a source like any other. `--section` downloads ONLY a time range of a longform source (keyframe-accurate) — the cheap way to clip minutes 12–25 of a 1h video. `--simulate` prints title/duration/resolution without downloading (confirm before big fetches; run those in the background). Runs a `quality_probe.py` pre-flight automatically (`--skip-probe` to skip it) — warns in a few seconds if the source tops out below `--max-height`, instead of finding out after a long download.
+- **`transcribe.py … --glossary terms.txt`** (one term per line: brand, model, names from the briefing/script) — passed as a neutral list prompt. Measured 2026-11-03 on a 14 s Cayenne clip: "K&N" → **"Cayenne" 3/3**, 0 invented words; it also dropped two small words, one correctly ("de" — the isolated window confirms it is not said) and one wrongly ("já" at the clip's last edge). So: use it whenever the video names brands/people, and keep trusting `refine_edges.py`'s isolated windows for the edges — but note those windows run WITHOUT the glossary, so a `conteúdo difere` flag on a glossary term ("Porsche" heard as "aposta") is expected, not a defect.
 - **`transcribe.py <video> --edit-dir <edit> [--language pt] [--model large-v3-turbo]`** — word-level, cached, local (WhisperX + forced alignment). No cap, no chunking. Pass `--language` when you know it — auto-detect costs a pass and can pick wrong on a short clip.
   **`--window 20`** for noisy / multi-voice sources (car interior, event, several people): transcribes in overlapping 20s windows. Measured 2026-10-30 on a 7-min, 4-voice car recording: the single pass placed words up to 0.7s early and INVENTED phrases; the windowed pass places them where they are. `--force` re-transcribes (old copy → `transcripts_prev/`).
-- **`refine_edges.py <edl.json>… [--dry-run]`** — run on EVERY EDL before render. Re-transcribes each range's window in isolation (model loaded once), finds the range's first/last quoted word there, and moves each edge to the nearest MEASURED silence (RMS envelope, local floor +6 dB, 40ms run). Flags `COLADO` where the wanted word touches the next one with no silence — that edge has no clean cut: move it to a real phrase end. Flags `conteúdo difere` when the window does not say what the quote says (the source transcript invented it). `verify_cut.py` cannot catch a decapitated word; this does.
+- **`staleness.py <edit>`** — what is out of date in the edit chain (edl → cut.mp4 → segments.json → edit-data → final, and the EDITOR export) and what to redo; `segments.json` is checked by CONTENT against the measured segment frame counts, not by file date. The preview shows the same list in the ⟳ pill. **Run it when opening an existing project**, before touching anything.
+- **`inserts_plan.py check|show|approve|strike|set|apply <edit>`** — the Phase-2 inserts plan gate (`i01…`): `apply` writes `inserts[]`/`splitInserts[]` with ids only after approval by number. See "Plano de inserts" in the track reference.
+- **`agent_markers.py add|list|clear <edit>`** — Claude's own markers (doubt of take, kept hesitation, unclear spoken note, suggestion, technical warning; `borda` is written by `refine_edges.py` when a user edge lands in speech). Anchored in SOURCE time; shown in the preview strip under the tabs in CUT time.
+- **`spoken_notes.py <edit> [--strip] [--open "…" --close "…"]`** — spoken edit notes on the recording → `spoken_notes.json` (text, stage, confidence); `--strip` cuts them out of `edl.json` at the middle of the surrounding pauses. Measured 2026-11-03 on a synthetic pt-BR clip: 2/2 notes found (one without closing → low confidence + marker), and the re-transcribed cut kept every normal line and none of the notes.
+- **`sync_sources.py <camera> <lapela/gravador/tela…> --edit-dir <edit>`** — offset of each extra source against the camera (`t_camera = t_source + offset`) by cross-correlation in the voice band, with confidence (peak / 2nd peak) and clock drift from 3 windows (warns when the sound would slip ≥10 ms across the shared span). Use the offset in the EDL as `"audio_sources": {"<camera key>": {"path": "<lapela.wav>", "offset": <s>}}` and `render.py` takes each take's sound from that file (J-cut only). Measured 2026-11-03: −1.2339 s found for a 1.234 s delay (0.1 ms off), a partial screen-audio placed at +30.0000 s, a 200 ppm recorder flagged (15 ms slip); a cut rendered with the lapela sits 0.4 ms from the camera-audio cut. Low confidence → check one marked word in both before trusting it.
+- **`hesitations.py <video> --edit-dir <edit> [--markers] [--json]`** — hesitations found by the audio, not the text (see "Choosing between takes").
+- **`learnings.py add|list|list-all|mark`** — the aprendizados notebook (`<edit>/aprendizados.md`); see "Memory".
+- **`client_profile.py learn|seed|rule|show|list`** — per-client taste profiles (`<prisma>/perfis/<cliente>/profile.json`); `seed` pre-fills the Estilo gate with the client's approved picks and says where they came from.
+- **`deliveries.py`** (library) — `render_phase2.py` and `deliver_mix.py` write `final_vNN.mp4` (never over an old delivery: ffmpeg `-y` truncates its target, so a new path every time) and point `final.mp4` at it; a pre-versioning `final.mp4` is kept as `final_v01.mp4`.
+- **`inventory.py <videos_dir>`** — Phase-1 inventory in recording order with VFR / mixed-fps / no-audio alerts (step 1 below).
+- **`regress.py [--update] [--keep]`** — Phase-1 regression on a frozen 35 s clip (`tests/fixture/`): transcription, refined edges, J-cut leads, **frames per take = plan (lip sync)**, cut duration, `verify_cut`, loudness vs `expected.json`. **Run it after changing any Phase-1 helper**; exit 1 = something changed that nobody asked for. `--update` only after the change was asked for and checked. Measured 2026-11-03: deterministic (0 ms edge drift across runs); `TRAIL` 0.06→0.20 failed 5/10 checks while `verify_cut` alone still said `flags: 0`. ~3 min.
+- **`refine_edges.py <edl.json>… [--dry-run]`** — run on EVERY EDL before render. Edges marked `"user_edges"` (set by `apply_preview_edits.py`) are never moved, only checked; every moved edge that adds or drops words says so (`+palavras` / `−palavras`). Re-transcribes each range's window in isolation (model loaded once), finds the range's first/last quoted word there, and moves each edge to the nearest MEASURED silence (RMS envelope, local floor +6 dB, 40ms run). Flags `COLADO` where the wanted word touches the next one with no silence — that edge has no clean cut: move it to a real phrase end. Flags `conteúdo difere` when the window does not say what the quote says (the source transcript invented it). `verify_cut.py` cannot catch a decapitated word; this does.
 - **`diarize.py <video> --edit-dir <edit> [--num-speakers N]`** — OPT-IN speaker labeling for multi-voice sources (interview, podcast). Rewrites `speaker_id` on an existing transcript via `pyannote.audio`; needs `uv sync --extra diarize` and a free HuggingFace token (gated pretrained model — see the helper's own error for the exact steps). Skip this entirely for a solo talking-head source; the transcript already defaults every word to `speaker_0` and diarization would be dead weight. When it runs, `captions_for_remotion.py` automatically adds per-caption `speakerId` once 2+ speakers are present — no separate flag needed downstream.
 - **`scene_detection.py <video> [--engine transnetv2]`** — shot-boundary detection (PySceneDetect by default, no model download; `transnetv2` opt-in via `uv sync --extra scenes-neural` for harder cuts/flashes). Feeds `reframe.py`'s per-scene camera analysis; also useful standalone to sanity-check "how many real cuts does this source have" before deciding on a multi-take strategy.
 - **`reframe.py <video> --edit-dir <edit> [--aspect-ratio 9:16]`** — automatic 9:16 reframe with face/speaker tracking (MediaPipe), for turning a 16:9/4K source into a vertical cut that follows the subject instead of a fixed center crop. Needs `uv sync --extra reframe`. Use this BEFORE Phase 1 cutting when the source is landscape and the target is vertical — it produces the vertical source `transcribe.py`/`render.py` then work from, same as any other ingest step.
@@ -113,6 +126,8 @@ Compositing & beat-synced montage (details in the two references below):
 - **`film_look.py shot.mp4 -o plate.mp4 --params '{…}'`** — film emulation + light VFX per shot: halation, bloom, anamorphic streaks, light sweep on paint, light-hit pulse, print curve, hue fixes.
 - **`sfx_synth.py -o sfx_cinema [--room-tone takes…]`** — synthesised cinematic SFX kit (sub swell/drop, risers, whooshes, ticks, door "TUM", leather) + diegetic room/cabin tone. Phone-audible set (2026-10-30): `impact`, `glass_ping`, `whoosh_air`, `whip_hit`, `riser_tonal` — energy in 150 Hz–8 kHz, where a phone speaker plays; `sub_drop`/`ui_tick` alone vanish there.
 - **`hf_motion_scenes.py`** (library) — motion-HTML scenes for the HyperFrames finishing pass, in the same glass-prism look as the GlassCard `prism`: `count`, `rank`, `compare`, `awd`, `lane`, `shield`, `brand`, `chips` + `index_html()` (Remotion render as base + scenes on top). Workflow and the two measured colour traps in `references/shortform.md` "Acabamento".
+- **`sfx_index.py build [dirs…]` / `show [--grep] [--celular]`** — every SFX library (template `public/sfx`, `media-use`, `sfx_cinema`, Epidemic downloads) measured: time to peak, useful length, shape (seco/médio/crescendo/contínuo), suggested `align`, brightness, and how much the peak drops on a phone speaker (toca bem / perde corpo / só o ataque — and `phone_peak_dbfs`, the absolute level left there: the drop is character, audibility is the mix). Peaks within ±5 ms on synthetic sounds with known peaks (a riser's flat top ~20 ms — risers align by `end`).
+- **`sfx_events.py <edit> [--apply]`** — visible Phase-2 events (hook, inserts, splits, glass highlights, transitions) with stable ids → a draft `sfxCues` following `references/sfx-craft.md` (no stacking on a transition's own sound, none inside the previous sound's tail, biggest impact on the hook with a 0.5 s breath before it, no repeat in 20 s except the prism signature, phone-audible only). Every cue carries `note` (role) and `align`. Measured on the Cayenne copy: 0 rule violations, and in the mixed SFX stem every cleanly measurable cue lands within ±1 frame of its event.
 - **`deliver_mix.py <edit> [--voice-chain noisy|clean] [--stems]`** — the Phase-2 delivery WITH a mix: treated voice (latency-compensated), soundtrack ducked under the voice and level-calibrated from measurement, `sfxCues` + transition SFX, two-pass loudnorm. Run after `render_phase2.py`; details in `references/shortform.md` Phase 3.
 - **`cinema_edit.py plan.json -o edit/hyperframes_cinema`** — cinema-motion assembly: bar-cut music segments, 24p/180° plates, film look, match cuts by light line, grain/veil layers, brand typography + drawn HUD, narrative mix (LPF/silence/cues/beds). See `references/cinema-motion.md`.
 - **`color_pipeline.py takes/*.mp4 --out graded/ --ref hero.mp4 --look "…"`** — multi-take / low-light colour: denoise → neutral white balance → protected-shadow exposure curve (asymmetric match) → shared look → clarity; report + before/after sheet. See `references/color-multitake.md`.
@@ -266,9 +281,15 @@ aspect changes is snapped to a valid one before the cards are drawn
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the
   existing render. These are instructions in the user's words — read them, then do
   the edit they describe (re-cut, re-grade, swap an insert, fix a caption…).
-- `edl.changes` / `edl.removed` — validate each new edge against
-  `speech_regions.py` (warn if an edge clips a word — the user's intent wins, but
-  say so), update `edl.json`, re-render, `verify_cut.py`.
+- `edl.changes` / `edl.removed` — **apply with `apply_preview_edits.py <edit>`,
+  never by hand.** It writes the preview's ranges into `edl.json`, carries
+  `quote`/`gain_db`/`reason` from the range each one came from, and marks every
+  edge the user moved as `"user_edges"`. Then `refine_edges.py`: it never moves a
+  locked edge, only checks it (warns if it clips a word or lands in speech — the
+  user's intent wins, but say so) and rewrites that range's `quote` from the
+  audio. Then re-render, `verify_cut.py`. Patching start/end by hand and keeping
+  the old `quote` made `refine_edges.py` re-anchor on the words the user had cut
+  — measured: 2 of 4 edits silently undone (2026-11-03).
 - `editData` — insert/hook/behind timings → edit-data.json → re-render Phase 2.
 - `editData.levels` — `{voice, music, sfx}`, each `{value, was}`, from the faders
   on the audio tracks. **Every audio track has one, and the saved number is
@@ -329,8 +350,8 @@ Then delete `preview_edits.json` and update `state.json`.
 
 Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for approval. No text, no graphics.
 
-1. **Inventory.** URL source? `ingest_url.py` first (`--section` when only a range of a longform video matters). `ffprobe` every source. `transcribe_batch.py` (or `transcribe.py`) → `pack_transcripts.py` → read `takes_packed.md`. Note dimensions/orientation and whether it looks flat/LOG. Material you can't picture from the transcript → `watch_video.py` for a one-Read visual survey.
-2. **Pre-scan** `takes_packed.md` for verbal slips, mis-speaks, and dead-air-stretched words (Whisper stretches a word's end across silence — verify long "phrases" against `speech_regions.py`/waveform before trusting them). **Then run `voice_levels.py` on every source** — the transcript is level-blind, so an inaudible passage reads exactly like a normal one. Anything it flags is a decision to make BEFORE the EDL: boost it with `gain_db`, or cut the take entirely.
+1. **Inventory.** URL source? `ingest_url.py` first (`--section` when only a range of a longform video matters). `inventory.py <videos_dir>` — every source in **recording order** (metadata date, else name) with fps, colour, audio, and alerts for **VFR** (measured from real frame intervals), **mixed nominal fps** (29.97 vs 30) and **no audio**; resolve a VFR source to CFR before cutting. If `transcribe.py` prints `⚠ GPU … SEM CUDA`, tell the user once (it is running on CPU; the fix is in `install.md` → GPU and needs their OK). `transcribe_batch.py` (or `transcribe.py`) → `pack_transcripts.py` → read `takes_packed.md`. Note dimensions/orientation and whether it looks flat/LOG. Material you can't picture from the transcript → `watch_video.py` for a one-Read visual survey.
+2. **Pre-scan** `takes_packed.md` for verbal slips, mis-speaks, and dead-air-stretched words (Whisper stretches a word's end across silence — verify long "phrases" against `speech_regions.py`/waveform before trusting them). **Then run `voice_levels.py` on every source** — the transcript is level-blind, so an inaudible passage reads exactly like a normal one. Anything it flags is a decision to make BEFORE the EDL: boost it with `gain_db`, or cut the take entirely. **And run `spoken_notes.py <edit>`**: instructions the speaker left on the recording ("nota de edição … fim da nota", tolerant to Whisper's spelling) are listed with their text and stage, and are **instructions to follow** (a note about takes overrides your tie-break; a note about an image goes into the inserts plan). After the EDL exists, `spoken_notes.py <edit> --strip` removes every note span from it — cutting in the middle of the pause on each side, so `refine_edges.py` finds clean edges — and a note with no closing phrase ends at the next ≥1 s pause and becomes a Claude marker to confirm. Suggest the habit to anyone recording for Prisma: it costs them five words and saves a round.
 3. **Converse.** Describe what you see; ask questions shaped by the material (content type, target length/aspect, pacing, must-keep/must-cut). No fixed checklist.
 4. **Detect the colour profile — do NOT ask.** Run `detect_color.py <source>`.
    The answer is in the file; asking put a measurable question on the user.
@@ -352,6 +373,14 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    user pick the editing style, the caption style and the edit elements in the UI
    (see "The Estilo tab"). Do NOT ask this in chat. Only then read the track
    reference: **`references/shortform.md`** or **`references/longform.md`**.
+   **Client profile:** if this video is for a client who already has one
+   (`client_profile.py list`), run `client_profile.py seed <cliente> <edit>` BEFORE opening the
+   gate — the tab opens with that client's approved picks and the header says
+   where they came from; the user only confirms or changes. After the style is
+   approved on a project, `client_profile.py learn <cliente> --from <edit>` records it
+   (ask the client's name; never guess it from the folder). Measured 2026-11-03:
+   the four Cayenne reels had the same style chosen from scratch four times.
+   Taste rules from the aprendizados go in with `client_profile.py rule`.
 
 ## J-cut — the default Phase-1 cleanup
 
@@ -399,6 +428,26 @@ positions. Everything downstream (preview timeline, `segments.json`, Phase-2
 overlays) must index off THAT, not off the sum of the ranges: the J-cut output is
 shorter than `Σ(end−start)`, so summing places every take after the first too late.
 
+**Every video segment is extracted with exactly the planned frames
+(`-frames:v N`), and each take records `video_frames` in `jcut_timeline`.** If
+render.py prints `⚠ [NN] vídeo com X frames, planejado Y`, stop: the picture of
+every later take will be off the voice. Why (F0.2, fixed 2026-11-03): with `-t`
+alone a segment sometimes came out one frame long; the audio is placed by the
+plan, so every later take's picture lagged the voice and the error accumulated.
+Measured on Cayenne reel_01 (27 takes): lip sync +2 f at take 5, +7 f at 13,
+**+9 f (300 ms) at take 27** before; after the fix 0 at all three, and 22/22
+visible cuts (`scdet`) exactly where `jcut_timeline` says. A residual of **±1
+frame per take, not accumulating** remains (the picture starts on the nearest
+source frame, the audio on the exact sample) — well inside lip-sync tolerance.
+`regress.py` checks frames = plan on every run.
+
+**Cuts rendered BEFORE 2026-11-03 carry the drift.** Measured end-of-cut picture
+lag of delivered projects: Cayenne reel_01 +9 f (300 ms), reel_02 +7 f (233 ms),
+reel_04 +4 f, reel_03 +3 f; Deocar +8 f (267 ms); Volvo XC60 reels ≤1 f; PPF X6
+0. Range Rover Sport (not delivered) reads −17 f — a different, unverified
+mechanism: measure lip sync before delivering it. To fix an old project:
+`render.py` again (Phase 1), regenerate `segments.json`, redo Phase 2.
+
 ## Color grade
 
 Reason about the image, don't preset-blind. Mental model ASC CDL: per channel `out = (in*slope + offset)**power`, then saturation. Applied per-segment at extraction (Hard Rule 7).
@@ -445,11 +494,46 @@ Opt-in: `render.py … --voice-master` or `"voice_master": true` in the EDL. Run
 
 Tune per voice: brighter → raise treble/3.2k; warmer → back those off, lift ~200Hz; more "radio" → lower threshold / raise ratio; more natural → ratio 2, threshold −24dB. **Verify:** `ffmpeg -i cut.mp4 -af astats -vn -f null -` → Flat factor 0, peak < 0dB; loudnorm summary ≈ −14 LUFS / TP ≤ −1. Then let the user hear it.
 
+**Treat the voice ONCE.** If the cut was voice-mastered here, deliver Phase 2 with `deliver_mix.py --voice-chain none`; any other chain stacks a second compressor on top (the floor rises, speech flattens — `deliver_mix` prints `VOZ TRATADA DUAS VEZES`). For a noisy or echoey room, skip `--voice-master` and pick the chain at delivery instead (`noisy`, `room`) from an A/B of one passage.
+
 ## Cut craft
 
 - Silences ≥ 400ms are the cleanest cuts; 150–400ms usable with a check; < 150ms unsafe.
 - Preserve peaks (laughs, punchlines, emphasis) — extend past a punchline to include the reaction.
 - Every cut must work on audio AND video.
+
+**Choosing between takes** (adapted from `LeiteZ/fluxo-de-edicao`, MIT):
+- Tie-break order: (1) what the speaker asked for on the recording or in chat;
+  (2) the **last complete** take — it is usually the loosest delivery; (3) an
+  earlier take only when the last one stumbles and the earlier one is clean.
+- **Before discarding a phrase as incomplete, look for the take the transcript
+  lost** — a stretch with speech energy (`speech_regions.py`) and no words. The
+  repeated take Whisper "swallowed" is often the good one.
+- You choose on the text, not the delivery (voice, look). With two good takes and
+  a hard call, pick one and **say where the other is** in the strategy summary.
+- Choose and discard between ideas and takes, never in the middle of a sentence.
+- **Hesitations** ("ééé", "hum", "tipo"): cut only when isolated by silence on
+  both sides **and** long. One glued to speech stays — from the transcript you
+  cannot tell whether the cut would sound wrong; the user judges it. WhisperX
+  often omits them entirely, so an absent "ééé" in `takes_packed.md` is not proof
+  there is none — **find them with `hesitations.py <video> --edit-dir <edit>
+  --markers`**, which reads the AUDIO: voiced stretches that belong to no word
+  (or hide inside a word Whisper stretched over them), plus transcribed fillers.
+  Isolated + long → cut candidate; glued → Claude marker, kept. Measured
+  2026-11-03: 3/3 on a synthetic clip (a 2 s "éééé" had vanished inside
+  "Cayenne." stretched to 5.74 s), 0 false positives on 49 s of real Cayenne
+  speech ("é"/"a"/"um" only count when elongated or isolated — they are words
+  in Portuguese).
+- **When in doubt, don't cut — flag it** with `agent_markers.py add <edit>
+  --source <S> --at <seconds in the SOURCE> --kind duvida_take|hesitacao|nota|sugestao|alerta
+  --text "…"`. It shows in the strip under the tabs ("Claude · N marcações"), in
+  CUT time, and follows the take through re-cuts (a moment that left the cut
+  stays, faded, at the nearest edge). Doubts go there, at the exact moment —
+  not only in a chat list the user has to map back to the video.
+- **A script/roteiro is for recognising takes and spelling names — never for
+  replacing what was said.** Captions follow the audio.
+- Order: as recorded. Suggest a reorder only when it is strong (a hook line that
+  works far better first), in the summary — never apply it unasked.
 
 **Check the TAIL of every cut for EXTRA words, not only missing ones.** A speaker who drags the last word ("bacanaaa", "vaaai") stretches it in the transcript; the end edge then lands after the NEXT speaker's first words (measured: XC60 r03 ended "bem bacana. É, Fabrício. E eu acho…", r07 "…a gente vai. E…"). A word-diff against the quote misses it — the expected words are all there. Read the last 8 words of the re-transcribed cut.
 
@@ -482,7 +566,10 @@ Archetypes: launch (HOOK→PROBLEM→SOLUTION→BENEFIT→EXAMPLE→CTA); tutori
 (COLD-OPEN→THESIS→POINTS→COUNTER→CONCLUSION→CTA); vlog; or invent.
 RULES: edges on word boundaries; pad 30–200ms; prefer ≥400ms silences; keep
 unavoidable slips only if no better take (note in "reason"); if over budget,
-drop a beat or trim tails and report.
+drop a beat or trim tails and report. Tie-break: speaker's request > last
+complete take > earlier clean take; before calling a phrase incomplete, look
+for a take the transcript lost (energy, no words); never cut mid-sentence;
+glued hesitations stay; when unsure keep it and say so in "reason".
 OUTPUT (JSON array, no prose):
 [{"source":"C0103","start":2.42,"end":6.85,"beat":"HOOK","quote":"…","reason":"…"}]
 ```
@@ -531,11 +618,22 @@ starts sounding like a different microphone.
 and building from memory means building the wrong video. Every element in the
 `fora` list is an instruction too: it is what must stay OUT.
 
+**Then the inserts plan — a second gate, inside Phase 2.** No insert, split
+image, B-roll or animated hook goes into `edit-data.json` before the numbered
+plan (`inserts_plan.json`, `i01…`) is approved by number in chat;
+`inserts_plan.py apply` refuses an unapproved plan. Procedure in the track
+reference ("Plano de inserts"). A weak concept caught here costs a line; caught
+after the render it costs a round.
+
 The cut is approved and the user picked the style in the UI (`preview_style.json`)
 → load **one** file and build exactly what was picked:
 
 - **Vertical / Reels / TikTok / Shorts → read `references/shortform.md`.** Karaoke captions, static hook headline, dynamic camera, inserts, behind-the-subject, SFX, soundtrack.
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
+
+**Before writing or changing any HyperFrames scene** (EDITOR export, `beat_edit`, `cinema_edit`, `hf_motion_scenes`) **→ read `references/hyperframes-traps.md`**: what is already handled in code, what is missing (version pinning), and what was measured on 0.8.93 (duration rounding).
+
+**Both tracks, before writing any insert, card, headline or element animation → read `references/motion-craft.md`** with `direction.md`: `direction.md` picks the transition between scenes; `motion-craft.md` says how each element enters, settles, lives and leaves inside a scene (speeds, curve per role with measured Remotion beziers, cascade, reading time, virtual camera, speed-ramp velocity matching).
 
 **Both tracks, before choosing any transition or animation → read `references/direction.md`.** The track reference tells you WHICH layers exist; `direction.md` tells you *when* to use a transition, *how long* it lasts and *with which curve* — energy/mood matrices, the six named presets with their GSAP→Remotion easing map, and the rule that governs the rest: one primary transition (60–70% of changes) plus one or two accents, never a different one per scene.
 
@@ -570,7 +668,7 @@ Both tracks: scaffold with one `cp -R` of the template, describe the video in `p
 
 ## Asset provenance (optional, across projects)
 
-- **`media_ledger.py record <file> --source <helper> --query "…" --license "…" --credit "…" --project <edit_dir>`** — after downloading a stock image/track (`pexels_search.py`, `wikimedia_images.py`, `treblo_music.py`, …), record it once. `find --query "…"` before a new search checks whether an earlier project already has a usable asset with the right license/credit, saving a repeat API call. Bookkeeping, not a blocking step — skip it for a one-off asset that will never be reused.
+- **`media_ledger.py record <file> --source <helper> --query "…" --license "…" --credit "…" --project <edit_dir>`** — after downloading a stock image/track (`pexels_search.py`, `wikimedia_images.py`, `treblo_music.py`, `epidemic_music.py`, …), record it once. `find --query "…"` before a new search checks whether an earlier project already has a usable asset with the right license/credit, saving a repeat API call. Bookkeeping, not a blocking step — skip it for a one-off asset that will never be reused.
 
 ## Memory — `project.md`
 
@@ -581,9 +679,34 @@ Append one section per session at `<edit>/project.md`:
 **Phase reached:** …  **Strategy:** …
 **Decisions:** takes, cuts, grade (LOG?), layer choices + why
 **Outstanding:** deferred items
+**Pendências:** - [ ] <phase> · <what the user asked, not yet applied> · <date>
 ```
 
-On startup, read it if it exists and summarize the last session in one sentence before asking whether to continue.
+On startup, read it if it exists and summarize the last session in one sentence before asking whether to continue — **and list every open `[ ]` pendência**.
+
+**A request that is not applied yet is written down at once, never only kept in
+the conversation.** Mark it `[x] → <where it was applied>` when done. Never end a
+session (or suggest `/clear`) with a correction the user asked for that is
+neither applied nor in `Pendências` — the next session has no other way to know
+it exists. (A `preview_edits.json` is deleted after it is applied; anything in it
+you could not apply goes here first.)
+
+**Aprendizados — what a review teaches the NEXT videos** (`learnings.py`). During
+any review, every correction, praise or preference that would apply to other
+videos becomes one line at once: `learnings.py add <edit> --phase <fase> --text "…"`
+("tira essa frase" is this video only — it does not go in; in doubt, `--maybe`).
+**Noting is not changing.** Skills and profiles change only when the user says
+"aplica os aprendizados": list the open lines (`list --open`, or `list-all
+<videos>` across projects), propose where each one goes — taste → the client's
+profile (`client_profile.py`), craft that holds for any video → the skill/reference,
+what holds for every phase → this file — let the user filter, write only what
+they approved, then `mark <n> --to "<where>"` or `--only-this-video`. Lines are
+never deleted. This is what makes each video start better than the last.
+
+**General quality feedback means rebuild, not retouch.** "Básico", "sem vida",
+"amador", "genérico" about a graphic or insert: restate the new direction for
+each one in a sentence, then build it again (`references/motion-craft.md` §12).
+Nudging a weak concept costs a round and stays weak.
 
 ## Anti-patterns
 - **Fixing in the video what the user asked to fix in Prisma.** When the user corrects a Prisma behaviour (a style element, a default, a cut rule), change the SKILL — template, reference, catalog, checks — and then the video. Patching only the project's edit-data makes the same correction come back next project; the user has had to repeat the glass-panel request several times for exactly this reason.

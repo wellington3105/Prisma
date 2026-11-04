@@ -49,6 +49,11 @@
   <button class="tab tab-editor active" data-tab="editor"><span class="tab-num">EDITOR</span> Timeline</button>
 </nav>
 
+<!-- Claude's markers (agent_markers.json): doubts and warnings at the exact
+     moment, in CUT time (what the EDITOR shows). A strip, not a track: the
+     Studio has no marker lane and nothing here may reach the render. -->
+<div id="agentStrip" class="agent-strip hidden" aria-label="Marcações do Claude"></div>
+
 <main>
   <section id="emptyState" class="empty glass hidden">
     <div class="empty-inner">

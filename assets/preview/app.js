@@ -819,7 +819,8 @@ function defaultStyle() {
  * re-cut to 16:9 keeps its "Empilhado" pick). Snap any dead choice back to a
  * valid one instead of shipping it to the renderer. */
 function reconcileStyleWithAspect() {
-  if (!S.style) return;
+  // an unknown aspect is not "landscape": wait for the decoded frame size
+  if (!S.style || !S.aspectKnown) return;
   const ls = isLandscape();
   for (const group of ['edits', 'headlines', 'captions']) {
     const key = group === 'edits' ? 'edit' : group === 'headlines' ? 'headline' : 'captions';
@@ -1012,9 +1013,19 @@ function renderStale() {
   return !!(m.editData && vid && m.editData > vid + 1);
 }
 
+// staleness.py (via /api/state) measures the whole chain: edl → cut.mp4 →
+// segments.json → edit-data → final, plus the EDITOR export. The first item is
+// the pill's text; the full list (with the fix for each) is its tooltip.
+const STALE_DEFAULT = '⟳ A timeline está à frente do vídeo — as inserções abaixo ainda não foram renderizadas.';
 function refreshHeader() {
   const pill = $('stalePill');
-  if (pill) pill.classList.toggle('hidden', !renderStale());
+  if (pill) {
+    const items = S.staleness || [];
+    pill.classList.toggle('hidden', !(renderStale() || items.length));
+    pill.textContent = items.length ? `⟳ ${items[0].what}${items.length > 1 ? ` (+${items.length - 1})` : ''}` : STALE_DEFAULT;
+    pill.title = items.map((it) => `• ${it.what}\n   → ${it.fix}`).join('\n');
+  }
+  renderAgentStrip();
   const n = dirtyCount();
   $('dirtyPill').classList.toggle('hidden', n === 0);
   $('dirtyCount').textContent = n;
@@ -1028,7 +1039,9 @@ async function poll() {
   try {
     const res = await fetch('/api/state');
     const data = await res.json();
-    const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration]);
+    // staleness is in the signature: segments.json and the EDITOR export are not
+    // in mtimes, so regenerating them would otherwise never clear the pill
+    const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration, data.staleness, data.agentMarkers]);
     if (sig !== S.lastSig) {
       const hadEdits = dirtyCount() > 0;
       if (!hadEdits) {
@@ -1045,6 +1058,8 @@ async function poll() {
 async function applyState(data) {
   S.state = data.state || {};
   S.mtimes = data.mtimes || {};
+  S.staleness = data.staleness || [];
+  S.agentMarkers = data.agentMarkers || [];
   S.videoDuration = data.videoDuration || 0;
   S.fps = S.state.fps || 24;
   S.savedPending = !!data.hasPendingEdits;
@@ -1331,6 +1346,62 @@ function renderAll() {
 }
 
 // ---------- correction markers ----------
+const AGENT_KINDS = {
+  duvida_take: 'dúvida de take', hesitacao: 'hesitação mantida', nota: 'nota não entendida',
+  sugestao: 'sugestão', alerta: 'alerta técnico', borda: 'borda a conferir',
+};
+/* Source time → draft-timeline time, through the same geometry draftLayout()
+ * uses (picture starts at start + lead). A moment that is no longer in the cut
+ * parks at the nearest surviving edge of that source and says so (inCut=false):
+ * a doubt about a take the user just removed is still worth seeing. */
+function sourceToDraft(source, st) {
+  const dl = draftLayout().filter((d) => !d.removed && d.source === source && d.dur > 0);
+  if (!dl.length) return null;
+  let best = null;
+  for (const d of dl) {
+    const ps = d.start + (d.lead || 0);
+    if (st >= ps - 1e-6 && st <= ps + d.dur + 1e-6) return { t: d.out + (st - ps), inCut: true };
+    const edge = st < ps ? { t: d.out, gap: ps - st } : { t: d.out + d.dur, gap: st - (ps + d.dur) };
+    if (!best || edge.gap < best.gap) best = edge;
+  }
+  return { t: best.t, inCut: false };
+}
+/* Source time → CUT time (cut.mp4, what the EDITOR shows), via the rendered
+ * layout. Same parking rule as sourceToDraft for a moment no longer in the cut. */
+function sourceToRendered(source, st) {
+  const rl = renderedLayout();
+  let best = null;
+  for (let k = 0; k < rl.length; k++) {
+    if (rl[k].source !== source) continue;
+    const ps = renderedPictureStart(k);
+    if (st >= ps - 1e-6 && st <= ps + rl[k].dur + 1e-6) return { t: rl[k].out + (st - ps), inCut: true };
+    const edge = st < ps ? { t: rl[k].out, gap: ps - st } : { t: rl[k].out + rl[k].dur, gap: st - (ps + rl[k].dur) };
+    if (!best || edge.gap < best.gap) best = edge;
+  }
+  return best ? { t: best.t, inCut: false } : null;
+}
+function renderAgentStrip() {
+  const strip = $('agentStrip');
+  if (!strip) return;
+  const items = (S.agentMarkers || [])
+    .map((m) => ({ m, p: sourceToRendered(m.source, +m.at) }))
+    .filter((x) => x.p)
+    .sort((a, b) => a.p.t - b.p.t);
+  strip.classList.toggle('hidden', items.length === 0);
+  strip.innerHTML = '';
+  if (!items.length) return;
+  el('span', 'agent-lbl', strip).textContent = `Claude · ${items.length} marcaç${items.length > 1 ? 'ões' : 'ão'}`;
+  for (const { m, p } of items) {
+    const it = el('span', `agent-item k-${m.kind}${p.inCut ? '' : ' out-of-cut'}`, strip);
+    it.dataset.agent = m.id;
+    const kind = AGENT_KINDS[m.kind] || m.kind;
+    const time = el('b', null, it);
+    time.textContent = fmt(p.t);
+    it.appendChild(document.createTextNode(`${kind}${p.inCut ? '' : ' (fora do corte)'} — ${m.text || ''}`));
+    it.title = `${kind} · ${fmt(p.t)} no corte${p.inCut ? '' : ' (o trecho saiu do corte; mostrado na borda mais próxima)'}\n` +
+               `${m.source} ${(+m.at).toFixed(2)}s na fonte\n${m.text || ''}`;
+  }
+}
 function renderNotes() {
   const lane = $('laneNotes');
   lane.innerHTML = '';
@@ -1341,6 +1412,21 @@ function renderNotes() {
     chip.textContent = n.text || '(sem descrição)';
     chip.title = `${fmt(n.start)} → ${fmt(n.end)}\n${n.text || ''}\n\nclique para editar`;
     chip.dataset.id = n.id;
+  }
+  // Claude's own markers (agent_markers.json), anchored in SOURCE time so they
+  // follow the take through trims and re-cuts. Blue/yellow, never the user's red,
+  // and not clickable as notes — they are information, not a pending edit.
+  for (const m of S.agentMarkers || []) {
+    const a = sourceToDraft(m.source, +m.at);
+    if (!a) continue;
+    const b = m.end != null ? sourceToDraft(m.source, +m.end) : null;
+    const w = b && b.inCut && a.inCut ? Math.max((b.t - a.t) * S.pps, 6) : 6;
+    const chip = el('div', `agent-chip k-${m.kind}${a.inCut ? '' : ' out-of-cut'}`, lane);
+    chip.style.left = `${a.t * S.pps}px`;
+    chip.style.width = `${w}px`;
+    chip.dataset.agent = m.id;
+    const label = AGENT_KINDS[m.kind] || m.kind;
+    chip.title = `Claude · ${label}${a.inCut ? '' : ' (fora do corte)'}\n${m.source} ${(+m.at).toFixed(2)}s na fonte\n${m.text || ''}`;
   }
   if (S.pendingIn != null) {
     const p = el('div', 'note-pending', lane);
@@ -2233,13 +2319,25 @@ function applyOrientation() {
   const h = video.videoHeight;
   if (!w || !h) return;
   const portrait = h > w;
-  if (portrait === document.body.classList.contains('portrait')) return;
+  // From here the aspect is MEASURED. Before it, the body has no `portrait`
+  // class and every project looks landscape — reconcileStyleWithAspect() then
+  // snapped portrait-only picks away (measured 2026-11-03: a saved "scatter"
+  // reopened as "karaoke" on a 1080×1920 cut). Snapping waits for this flag.
+  const firstMeasure = !S.aspectKnown;
+  S.aspectKnown = true;
+  if (portrait === document.body.classList.contains('portrait')) {
+    if (firstMeasure && S.style) renderSetup();
+    return;
+  }
   document.body.classList.toggle('portrait', portrait);
   syncLabelW(); // the header column is narrower in the portrait split
   // the timeline's width just changed — re-fit after layout settles.
   // renderSetup() too: the gate's layout mockups are drawn per aspect, and the
   // first frame usually decodes AFTER the tab has already been built once.
-  requestAnimationFrame(() => { fitZoom(); renderAll(); if (S.style) renderSetup(); });
+  // the gate is rebuilt NOW (DOM only); only the timeline fit waits for layout.
+  // Inside the rAF it never ran in a pane that throttles frames (measured).
+  if (S.style) renderSetup();
+  requestAnimationFrame(() => { fitZoom(); renderAll(); });
 }
 video.addEventListener('loadedmetadata', applyOrientation);
 

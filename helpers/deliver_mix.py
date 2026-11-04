@@ -16,6 +16,9 @@ O que faz, na ordem:
      afftdn → highpass 110 → −5 dB @240 (embolado) → +5 dB @3 kHz (presença) →
      +4 dB shelf 7 kHz (ar) → expansor (abaixa o ruído entre frases) →
      compressor 3:1 → de-esser → limiter. "clean" = só EQ+compressor+limiter.
+     "room" = sala reverberante + lapela abafada (denoise duplo, presença
+     larga). "none" = só limiter, para voz que já veio masterizada do corte.
+     Escolha a cadeia ouvindo um A/B do trecho, não pelo nome.
   2. TRILHA: `soundtrack.raw` (a faixa SEM carve), começando em
      `soundtrack.offset` s (use beat_map.py para pôr o drop num corte), com
      ducking em DUAS camadas usando a voz tratada como chave:
@@ -30,7 +33,7 @@ O que faz, na ordem:
      linear) — passada única "bombeia" quando a trilha sobe nas pausas.
 
 Uso:
-    uv run python helpers/deliver_mix.py <edit_dir> [--voice-chain noisy|clean|"<filtros>"]
+    uv run python helpers/deliver_mix.py <edit_dir> [--voice-chain noisy|clean|room|none|"<filtros>"]
     uv run python helpers/deliver_mix.py <edit_dir> --stems    # grava voz/trilha/sfx separados para conferir
 Lê remotion/out/render.mp4 (rode render_phase2.py antes) e grava <edit_dir>/final.mp4.
 """
@@ -57,6 +60,20 @@ CHAINS = {
     "clean": ("highpass=f=80,equalizer=f=220:t=q:w=1.0:g=-2.5,equalizer=f=3200:t=q:w=1.2:g=2.5,"
               "highshelf=f=9000:g=2,acompressor=threshold=-20dB:ratio=3:attack=10:release=150:makeup=2,"
               "deesser=i=0.35,alimiter=limit=0.89"),
+    # Sala reverberante (azulejo) + lapela abafada no peito. Medido no PPF X6
+    # (2026-11-03): agudo 2–5 kHz vs grave 100–300 Hz −8,1 → −3,9 dB; sync
+    # constante. Denoise duplo (afftdn + anlmdn) para o tapete da sala, corte
+    # de embolado em 170/380, presença larga 2,8k/5k + ar 8k, expansor firme
+    # DEPOIS do compressor (antes dele, o makeup levanta o fundo de volta).
+    # O eco do azulejo diminui pouco — para tirá-lo, só limpeza por IA.
+    "room": ("highpass=f=90,afftdn=nr=32:nf=-28:tn=1,anlmdn=s=0.0006:p=0.004:r=0.01,"
+             "equalizer=f=170:t=q:w=1.0:g=-4,equalizer=f=380:t=q:w=1.2:g=-3,"
+             "equalizer=f=2800:t=q:w=1.0:g=6,equalizer=f=5000:t=q:w=1.4:g=3,highshelf=f=8000:g=5,"
+             "acompressor=threshold=-24dB:ratio=3:attack=6:release=120:makeup=3,"
+             "agate=threshold=0.08:ratio=6:range=0.04:attack=3:release=140:knee=3,"
+             "deesser=i=0.5,alimiter=limit=0.89"),
+    # A voz já saiu tratada da Fase 1 (`voice_master`): só segura o pico.
+    "none": "alimiter=limit=0.89",
 }
 
 
@@ -98,7 +115,7 @@ def probe(p: Path) -> float:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("edit", type=Path)
-    ap.add_argument("--voice-chain", default=None, help="noisy | clean | cadeia ffmpeg sem espaços")
+    ap.add_argument("--voice-chain", default=None, help="noisy | clean | room | none | cadeia ffmpeg sem espaços")
     ap.add_argument("--stems", action="store_true")
     ap.add_argument("--tone-ref", type=Path, default=None,
                     help="vídeo de referência do tom (ex.: a base que entrou no HyperFrames): mede o desvio de "
@@ -114,6 +131,16 @@ def main() -> None:
     aud = ed.get("audio") or {}
     chain_key = a.voice_chain or aud.get("voiceChain") or "clean"
     chain = CHAINS.get(chain_key, chain_key)
+    # Voz tratada duas vezes: `voice_master` no corte já comprimiu e equalizou;
+    # outra cadeia aqui empilha compressão (o fundo sobe, a fala achata). Visto
+    # no PPF X6 (2026-11-03) — só apareceu quando o usuário pediu "aprimorar a fala".
+    edl_path = edit / "edl.json"
+    edl_vm = (json.loads(edl_path.read_text(encoding="utf-8")).get("voice_master")
+              if edl_path.exists() else False)
+    if edl_vm and chain_key != "none":
+        print(f"⚠ VOZ TRATADA DUAS VEZES: o corte já tem voice_master e a entrega aplica a cadeia "
+              f"'{chain_key}'. Use --voice-chain none, ou re-renderize o corte sem --voice-master "
+              f"e trate a voz só aqui.")
     render = (a.picture.resolve() if a.picture else edit / "remotion" / "out" / "render.mp4")
     if not render.exists():
         sys.exit("render.mp4 não existe — rode render_phase2.py antes")
@@ -131,7 +158,19 @@ def main() -> None:
     cues = [dict(c) for c in ed.get("sfxCues", [])]
     for t in ed.get("transitions", []):
         if t.get("sfx", "cut-click.mp3") is not None:
-            cues.append({"src": t.get("sfx", "cut-click.mp3"), "at": t["at"], "volume": t.get("volume", 0.18)})
+            # A transição tem o pico visual NO corte → o golpe do som também
+            # (F3.0: o whip_hit.wav batia 0,29 s depois; cut-click tem pico em 0).
+            cues.append({"src": t.get("sfx", "cut-click.mp3"), "at": t["at"], "volume": t.get("volume", 0.18),
+                         "align": t.get("sfxAlign", "peak")})
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from sfx_peak import shift as _sfx_shift
+    for c in cues:
+        # sfxCues sem `align` continuam pelo início (o que os projetos antigos já
+        # compensaram à mão); `"align": "peak"` | `"end"` desconta pelo arquivo
+        sh = _sfx_shift(find(c["src"]), c.get("align"))
+        if sh:
+            print(f"  sfx {c['src']} @ {float(c['at']):.2f}s alinhado pelo {c.get('align')}: início −{sh * 1000:.0f} ms")
+            c["at"] = float(c["at"]) - sh
 
     cut = edit / "cut.mp4"
     # Latência da cadeia de voz (afftdn trabalha em janelas FFT): medida, não
@@ -248,7 +287,8 @@ def main() -> None:
     ln = (f"loudnorm=I=-14:TP=-1:LRA=11:measured_I={me['input_i']}:measured_TP={me['input_tp']}:"
           f"measured_LRA={me['input_lra']}:measured_thresh={me['input_thresh']}:offset={me['target_offset']}:linear=true")
 
-    out = edit / "final.mp4"
+    from deliveries import next_path, publish  # sys.path já inclui helpers/ (sfx_peak)
+    out = next_path(edit)  # final_vNN.mp4 — nunca sobrescreve uma entrega (F6.2)
     cmd = ["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", ";".join(fc) + f";[pre]{ln}[out]",
            "-map", "[vid]", "-map", "[out]", "-c:v", "libx264", "-preset", "slow", "-crf", "17",
            "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
@@ -256,7 +296,9 @@ def main() -> None:
            "-movflags", "+faststart", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
+        out.unlink(missing_ok=True)  # versão incompleta não vira entrega
         sys.exit(r.stderr[-2500:])
+    publish(edit, out, by="deliver_mix")
 
     if a.stems:
         stems = edit / "stems"; stems.mkdir(exist_ok=True)

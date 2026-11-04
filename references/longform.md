@@ -63,6 +63,13 @@ Same helpers (`transcribe` → `pack` → editor sub-agent → `speech_regions` 
 
 ## Phase 2 — 16:9 visuals (data-driven template)
 
+**Plano de inserts first** — same gate as short-form (`shortform.md`, "Plano de
+inserts"): every B-roll cutaway, callout and chapter card is an `iNN` item
+approved by number before it is written into `edit-data.json`
+(`inserts_plan.py check → show → approve → apply`). On longform, approve by
+section ("o gancho primeiro", "até 3:00") — the plan can be partially approved
+and applied as it goes.
+
 Scaffold + describe, same pattern as short-form:
 
 ```bash
@@ -113,6 +120,10 @@ existe.
 
 ## Helpers de Fase 2/3
 
+- **`epidemic_music.py`** — trilha licenciada do Epidemic Sound: `search` →
+  `fit <id> --duration <cut>` (edição com final real, ≤300s) ou `download`
+  inteira/stem. Fluxo em `references/soundtrack.md` "Catálogo licenciado".
+
 ---
 
 ## Chaves opcionais (nunca pedidas na instalação)
@@ -127,6 +138,7 @@ pelo caminho sem chave e diga o que muda.
 | `PEXELS_API_KEY` | imagens/vídeos ilustrativos | Wikimedia Commons cobre a maioria |
 | `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | marcas, pessoas e logos específicos | Wikimedia é o fallback |
 | `TREBLO_API_KEY` | trilha sonora composta por IA (Fase 3) | trilha só a partir de arquivo local |
+| `EPIDEMIC_SOUND_MCP_API_KEY` | trilha + SFX do catálogo Epidemic Sound (Fase 3) | Treblo ou arquivo local |
 
 ### Como o usuário cria a chave do Treblo (trilha com IA)
 

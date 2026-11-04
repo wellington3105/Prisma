@@ -1,0 +1,63 @@
+{
+ "version": 1,
+ "sources": {
+  "clip": "__FIXTURE__"
+ },
+ "grade": "",
+ "ranges": [
+  {
+   "source": "clip",
+   "start": 0.889,
+   "end": 13.589,
+   "quote": "essa aqui, por exemplo, está com 40 mil km, seria um carro de 279 mil. Acessível, super acessível para quem tem um carro premium. É coisa de louco, né? Não é? Preço de carro chinês,"
+  },
+  {
+   "source": "clip",
+   "start": 14.21,
+   "end": 15.677,
+   "quote": "hein?"
+  },
+  {
+   "source": "clip",
+   "start": 18.74,
+   "end": 20.273,
+   "quote": "Você tem um carro"
+  },
+  {
+   "source": "clip",
+   "start": 20.266,
+   "end": 22.033,
+   "quote": "produzido na Alemanha,"
+  },
+  {
+   "source": "clip",
+   "start": 22.18,
+   "end": 23.347,
+   "quote": "encara"
+  },
+  {
+   "source": "clip",
+   "start": 23.326,
+   "end": 25.259,
+   "quote": "300 km por hora"
+  },
+  {
+   "source": "clip",
+   "start": 25.39,
+   "end": 26.39,
+   "quote": "em vias"
+  },
+  {
+   "source": "clip",
+   "start": 26.368,
+   "end": 29.035,
+   "quote": "sem limite de velocidade nenhuma..."
+  },
+  {
+   "source": "clip",
+   "start": 29.55,
+   "end": 34.15,
+   "quote": "hoje você pode rodar aqui com toda a segurança do mundo, né?"
+  }
+ ]
+}

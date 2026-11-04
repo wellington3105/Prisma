@@ -8,6 +8,9 @@ O conteúdo é escrito estático no HTML — editável no Studio.
 Linguagem visual = GlassCard `prism` do Remotion: placa fosca com backdrop blur,
 espessura recuada em Z, perspectiva que gira devagar, aro iridescente fino em
 anel (máscara), reflexo especular que varre a placa, rótulo com traço laranja.
+
+`top` (px, padrão 360) posiciona a placa por cena — escolha olhando o quadro de
+baixo; o critério está em references/shortform.md, "Onde a placa fica".
 """
 from __future__ import annotations
 
@@ -103,7 +106,7 @@ for(var f=0;f<=n;f++){{var v={a}+({b}-{a})*ez(f/n);tl.set(el,{{textContent:{fmt}
 
 # ----------------------------------------------------------------------------- cenas
 
-def count(cid, dur, start, end, suffix, label, sub, prefix=""):
+def count(cid, dur, start, end, suffix, label, sub, prefix="", top=360):
     """Número grande contando + texto. Ex.: 0→19 alto-falantes; 1º→3º no ranking."""
     css = """
 .c-row{position:relative;display:flex;align-items:center;gap:40px}
@@ -120,10 +123,10 @@ var row=root.querySelector(".c-row"),val=root.querySelector(".c-val");
 gsap.set(row,{opacity:0,y:30});tl.to(row,{opacity:1,y:0,duration:.5,ease:"power3.out"},.35);
 tl.to(val,{scale:1.08,duration:.16,ease:"power3.out"},1.65);tl.to(val,{scale:1,duration:.2,ease:"power2.out"},1.81);
 """
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
-def rank(cid, dur, label, rows, hi):
+def rank(cid, dur, label, rows, hi, top=360):
     """Pódio: linhas 1º, 2º… com a linha `hi` em destaque (barra laranja + pulso)."""
     css = """
 .r-row{position:relative;display:flex;align-items:center;gap:30px;height:104px;margin-top:16px;padding:0 30px;border-radius:24px;
@@ -143,10 +146,10 @@ rs.forEach(function(r,i){{tl.to(r,{{opacity:1,x:0,duration:.45,ease:"power3.out"
 var h=rs[{hi}];tl.to(h,{{scale:1.05,duration:.18,ease:"power3.out"}},.45+{len(rows)}*.18+.15);
 tl.to(h,{{scale:1,duration:.22,ease:"power2.out"}},.45+{len(rows)}*.18+.33);
 """
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
-def compare(cid, dur, label, rows, chip):
+def compare(cid, dur, label, rows, chip, top=360):
     """Barras comparando valores. rows = [(nome, valor_num, texto_fmt, pct, destaque)]."""
     css = """
 .k-row{position:relative;margin-top:30px}
@@ -172,10 +175,10 @@ def compare(cid, dur, label, rows, chip):
         js += _count_rows(f"#{cid}-v{i}", 0, r[1], t0, 1.1, '"R$ "+Math.round(v)+" mil"')
     js += """var ch=root.querySelector(".k-chip");gsap.set(ch,{opacity:0,scale:.8});
 tl.to(ch,{opacity:1,scale:1,duration:.4,ease:"back.out(2)"},2.3);"""
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
-def awd(cid, dur, label, chips):
+def awd(cid, dur, label, chips, top=360):
     """Carro visto de cima: rodas acendendo em sequência, linhas de torque e bolsas de ar."""
     css = """
 .a-wrap{position:relative;display:flex;gap:44px;align-items:center}
@@ -208,10 +211,10 @@ air.forEach(function(a,i){{tl.fromTo(a,{{opacity:.9,scale:.4,transformOrigin:"50
   tl.fromTo(a,{{opacity:.7,scale:.4,transformOrigin:"50% 50%"}},{{opacity:0,scale:1.25,duration:.9,ease:"power2.out"}},2.6+i*.08);}});
 ch.forEach(function(c,i){{tl.to(c,{{opacity:1,x:0,duration:.45,ease:"power3.out"}},1.1+i*.3);}});
 """
-    return _scene(cid, dur, body, css, js, width=900)
+    return _scene(cid, dur, body, css, js, width=900, top=top)
 
 
-def lane(cid, dur, label, readout):
+def lane(cid, dur, label, readout, top=360):
     """HUD de assistência: pista em perspectiva, faixas tracejadas correndo, carro da frente travado."""
     css = """
 .l-svg{display:block;width:760px;height:520px;margin:0 auto}
@@ -239,10 +242,10 @@ tl.fromTo(lk,{opacity:0,scale:1.35,transformOrigin:"50% 50%"},{opacity:1,scale:1
 tl.to(g,{strokeDashoffset:0,duration:.6,ease:"power2.out"},1.6);
 tl.to(rd,{opacity:1,y:0,duration:.45,ease:"power3.out"},1.9);
 """
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
-def shield(cid, dur, label, title, sub):
+def shield(cid, dur, label, title, sub, top=360):
     """Escudo se desenhando com brilho + título."""
     css = """
 .s-row{display:flex;align-items:center;gap:44px}
@@ -264,10 +267,10 @@ tl.to(c,{strokeDashoffset:0,duration:.45,ease:"power3.out"},1.25);
 tl.fromTo(gl,{opacity:0},{opacity:.35,duration:.25,ease:"power2.out"},1.4);tl.to(gl,{opacity:.12,duration:.6,ease:"power2.out"},1.65);
 tl.to(t,{opacity:1,x:0,duration:.5,ease:"power3.out"},.9);
 """
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
-def brand(cid, dur, label, word, sub):
+def brand(cid, dur, label, word, sub, top=360):
     """Revelação de marca: letras em serifada subindo uma a uma + brilho correndo por cima.
 
     O brilho é uma SEGUNDA camada do mesmo texto com o degradê recortado
@@ -296,10 +299,10 @@ tl.to(sb,{opacity:1,duration:.5,ease:"power2.out"},1.3);
 tl.set(sh,{opacity:1},1.5);
 tl.fromTo(sh,{backgroundPosition:"100% 0"},{backgroundPosition:"0% 0",duration:1.2,ease:"power2.inOut"},1.5);
 """
-    return _scene(cid, dur, body, css, js, width=900)
+    return _scene(cid, dur, body, css, js, width=900, top=top)
 
 
-def chips(cid, dur, label, items):
+def chips(cid, dur, label, items, top=360):
     """Chips de recursos surgindo em sequência (apps, espelhamento)."""
     css = f"""
 .h-wrap{{display:flex;flex-wrap:wrap;gap:20px}}
@@ -313,7 +316,7 @@ def chips(cid, dur, label, items):
 var c=root.querySelectorAll(".h-chip");gsap.set(c,{opacity:0,scale:.7,y:20});
 tl.to(c,{opacity:1,scale:1,y:0,duration:.42,ease:"back.out(1.8)",stagger:.22},.5);
 """
-    return _scene(cid, dur, body, css, js)
+    return _scene(cid, dur, body, css, js, top=top)
 
 
 def index_html(dur: float, mounts: list[dict]) -> str:

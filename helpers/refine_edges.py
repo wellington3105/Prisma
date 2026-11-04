@@ -26,6 +26,19 @@ Bordas sem silêncio entre a palavra querida e a vizinha (fala colada, ou outra
 pessoa falando por cima) são marcadas COLADA — essas não têm corte limpo: mude a
 borda para uma pausa de verdade (fim de frase) em vez de aceitar o corte.
 
+**Bordas da pessoa (`"user_edges": ["start"|"end"]` no range) nunca se movem.**
+São as que ela ajustou no preview (marcadas por `apply_preview_edits.py`). Aqui
+elas só são CONFERIDAS — avisa se cortam palavra no meio ou caem em fala — e o
+`quote` do range é reescrito a partir da janela isolada, porque o antigo
+descreve o range de antes da edição. Medido em 2026-11-03 (cópia do Cayenne
+reel_01): sem essa trava, o quote antigo reancorava a borda e 2 de 4 edições da
+pessoa foram desfeitas em silêncio ("Preço de carro chinês" e "esse carro"
+voltaram ao corte). Range sem `quote` recebe o mesmo tratamento: não há palavra
+para ancorar, então a borda fica e é só conferida.
+
+Toda borda que se move e faz palavras entrarem ou saírem do range é dita no
+relatório (`+palavras` / `−palavras`) — mover borda é decisão, não detalhe.
+
 Uso:
     uv run python helpers/refine_edges.py reels/*/edl.json --language pt
     uv run python helpers/refine_edges.py edl.json --dry-run      # só relatório
@@ -48,6 +61,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from transcribe import WHISPERX_MODEL, _whisperx_device  # noqa: E402
+try:
+    import agent_markers as _markers  # noqa: E402
+except Exception:  # o refine funciona sem o preview
+    _markers = None
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -89,7 +106,15 @@ class Engine:
     def __init__(self, language: str | None, model_name: str):
         import whisperx
         self.wx = whisperx
-        self.device, ct = _whisperx_device()
+        # CPU/int8 de propósito, mesmo com GPU (D7, medido 2026-11-03 na
+        # regressão): float16, float32 e até int8 no CUDA alinham "hein?" do
+        # range 01 em 14,58–14,72 e o quiet_point acha uma pausa de 40 ms ENTRE
+        # sílabas (14,88) — a fala volta forte em 14,95 e o fim cortava 0,6 s de
+        # voz. Só o int8 da CPU dá o resultado validado. O defeito real é da
+        # regra (micro-pausa dentro de vocalização não transcrita), pendência
+        # D10 no PLANO-FLUXO-EDICAO.md; até ela ser medida, a borda não muda.
+        _whisperx_device()  # mantém o aviso de GPU coerente
+        self.device, ct = "cpu", "int8"
         try:
             self.model = whisperx.load_model(model_name, self.device, compute_type=ct, language=language,
                                              vad_options={"vad_onset": 0.200, "vad_offset": 0.250})
@@ -148,10 +173,28 @@ def quiet_point(env: np.ndarray, thr: float, t_rel: float, direction: int) -> fl
     return None
 
 
+def check_kept_edge(local: list[dict], env: np.ndarray, thr: float, t_rel: float,
+                    label: str) -> str:
+    """Confere uma borda que NÃO pode mudar (da pessoa, ou sem quote)."""
+    for w in local:
+        if w["s"] + 0.02 < t_rel < w["e"] - 0.02:
+            return f"{label} corta \"{w['raw']}\" no meio (mantido — confira)"
+    i = int(round(t_rel / HOP))
+    if 0 <= i < len(env) and env[i] >= thr:
+        return f"{label} cai em fala, sem silêncio (mantido — confira)"
+    return f"{label} ok (mantido)"
+
+
+def words_between(local: list[dict], a_rel: float, b_rel: float) -> list[int]:
+    return [i for i, w in enumerate(local) if w["s"] >= a_rel - 0.02 and w["e"] <= b_rel + 0.02]
+
+
 def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
     edl = json.loads(edl_path.read_text(encoding="utf-8"))
     ranges = edl["ranges"]
     print(f"\n== {edl_path.parent.name}/{edl_path.name}  ({len(ranges)} ranges)")
+    if not dry and _markers is not None:
+        _markers.clear(edl_path.parent, "borda")  # avisos da rodada anterior saem; os atuais voltam abaixo
     for n, r in enumerate(ranges):
         src = edl["sources"][r["source"]]
         q = [norm(w) for w in (r.get("quote") or "").split() if norm(w)]
@@ -167,12 +210,22 @@ def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
         thr = floor + ABOVE_FLOOR_DB
         old = (r["start"], r["end"])
         flags = []
+        locked = set(r.get("user_edges") or [])
+        # Sem quote não há palavra para ancorar: a borda fica e é conferida.
+        keep_start = "start" in locked or not q
+        keep_end = "end" in locked or not q
 
         # ---- início
-        i0 = find_seq(local, q[:2] or q[:1], r["start"] + 0.08 - t0, True) if q else None
-        if i0 is None and q:
-            i0 = find_seq(local, q[:1], r["start"] + 0.08 - t0, True)
-        if i0 is None:
+        i0 = None
+        if not keep_start:
+            i0 = find_seq(local, q[:2] or q[:1], r["start"] + 0.08 - t0, True)
+            if i0 is None:
+                i0 = find_seq(local, q[:1], r["start"] + 0.08 - t0, True)
+        if keep_start:
+            s_new = r["start"]
+            flags.append(check_kept_edge(local, env, thr, s_new - t0,
+                                         "início da pessoa" if "start" in locked else "início (sem quote)"))
+        elif i0 is None:
             flags.append("início: 1ª palavra não achada (mantido)")
             s_new = r["start"]
         else:
@@ -188,10 +241,16 @@ def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
             s_new = t0 + s_rel
 
         # ---- fim
-        i1 = find_seq(local, q[-2:] or q[-1:], r["end"] - 0.06 - t0, False) if q else None
-        if i1 is None and q:
-            i1 = find_seq(local, q[-1:], r["end"] - 0.06 - t0, False)
-        if i1 is None:
+        i1 = None
+        if not keep_end:
+            i1 = find_seq(local, q[-2:] or q[-1:], r["end"] - 0.06 - t0, False)
+            if i1 is None:
+                i1 = find_seq(local, q[-1:], r["end"] - 0.06 - t0, False)
+        if keep_end:
+            e_new = r["end"]
+            flags.append(check_kept_edge(local, env, thr, e_new - t0,
+                                         "fim da pessoa" if "end" in locked else "fim (sem quote)"))
+        elif i1 is None:
             flags.append("fim: última palavra não achada (mantido)")
             e_new = r["end"]
         else:
@@ -208,14 +267,40 @@ def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
                 e_rel = max(e_rel, we + 0.02)
             e_new = t0 + e_rel
 
+        # ---- palavras que a mudança de borda pôs ou tirou do range
+        new_idx = words_between(local, s_new - t0, e_new - t0)
+        old_idx = words_between(local, old[0] - t0, old[1] - t0)
+        added = [local[i]["raw"] for i in new_idx if i not in old_idx]
+        dropped = [local[i]["raw"] for i in old_idx if i not in new_idx]
+        if added:
+            flags.append(f"+palavras: \"{' '.join(added)}\"")
+        if dropped:
+            flags.append(f"−palavras: \"{' '.join(dropped)}\"")
+
         # ---- conteúdo: o que a janela diz entre as bordas novas vs o quote
-        inside = [w["w"] for w in local if w["s"] >= s_new - t0 - 0.02 and w["e"] <= e_new - t0 + 0.02]
-        if q:
+        inside_raw = " ".join(local[i]["raw"] for i in new_idx)
+        if locked or not q:
+            # O quote antigo descreve o range de ANTES da edição; o novo vem da
+            # janela isolada, e é ele que a próxima rodada usa para conferir.
+            if inside_raw:
+                r["quote"] = inside_raw
+                flags.append(f"quote reescrito: \"{inside_raw}\"")
+        else:
             import difflib
-            ratio = difflib.SequenceMatcher(None, q, inside).ratio()
+            ratio = difflib.SequenceMatcher(None, q, [local[i]["w"] for i in new_idx]).ratio()
             if ratio < 0.8:
-                flags.append(f"conteúdo difere do quote ({ratio:.2f}): \"{' '.join(w['raw'] for w in local if w['s'] >= s_new - t0 - 0.02 and w['e'] <= e_new - t0 + 0.02)}\"")
+                flags.append(f"conteúdo difere do quote ({ratio:.2f}): \"{inside_raw}\"")
         r["start"], r["end"] = round(s_new, 3), round(e_new, 3)
+        # Uma borda da pessoa que corta palavra vira marcador amarelo no preview,
+        # no ponto exato — a intenção dela vale, mas ela precisa ver o aviso.
+        if not dry and _markers is not None:
+            for f in flags:
+                if "da pessoa" in f and "confira" in f:
+                    at = r["start"] if f.startswith("início") else r["end"]
+                    try:
+                        _markers.add(edl_path.parent, r["source"], at, "borda", f)
+                    except Exception:
+                        pass
         mv = f"{old[0]:.2f}→{r['start']:.2f}  {old[1]:.2f}→{r['end']:.2f}"
         print(f"  [{n:02d}] {mv}  " + ("; ".join(flags) if flags else "ok"))
 
@@ -227,6 +312,13 @@ def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
             p["end"] = r["end"]
             p["quote"] = f"{p.get('quote', '')} {r.get('quote', '')}".strip()
             p["gain_db"] = round(((p.get("gain_db") or 0) + (r.get("gain_db") or 0)) / 2, 1)
+            # o range fundido herda a trava do início de um e a do fim do outro
+            locks = [x for x in (p.get("user_edges") or []) if x == "start"] + \
+                    [x for x in (r.get("user_edges") or []) if x == "end"]
+            if locks:
+                p["user_edges"] = locks
+            else:
+                p.pop("user_edges", None)
             print(f"  fundidos: …{p['end']:.2f} (pausa < 80ms entre eles)")
         else:
             merged.append(r)

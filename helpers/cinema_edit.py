@@ -458,7 +458,14 @@ def build_audio(plan, tl: Timeline, base: Path, out_wav: Path) -> dict:
     for c in au.get("cues", []):
         src = read_audio(sfx_dir / f'{c["sfx"]}.wav') * 10 ** (c.get("db", -6) / 20)
         tt = tl.vt(c["at"]) if "at" in c else c["t"]
-        s0 = int(round(tt * SR)) - (len(src) if c.get("align") == "end" else 0)
+        # align: "end" (riser termina no evento) | "peak" (o golpe cai no evento,
+        # medido no próprio arquivo — F3.0) | início (padrão)
+        if c.get("align") == "end":
+            s0 = int(round(tt * SR)) - len(src)
+        elif c.get("align") == "peak":
+            s0 = int(round(tt * SR)) - int(np.argmax(np.abs(src).max(axis=1) if src.ndim > 1 else np.abs(src)))
+        else:
+            s0 = int(round(tt * SR))
         s0 = max(0, s0); n = min(len(src), total - s0)
         fx[s0:s0 + n] += src[:n]
     mix = mix_m + fx
@@ -660,9 +667,13 @@ def main() -> None:
                      f'data-width="{W}" data-height="{H}" style="z-index:50"></div>')
     hosts.append(f'    <audio id="mix" src="assets/audio/mix.wav" data-start="0" data-duration="{total}" data-track-index="10" '
                  f'data-volume="1" data-timeline-role="music" data-audio-group="musica"></audio>')
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from hf_version import recorded, stamp
+    prev = recorded(out)  # um projeto refeito mantém a versão com que nasceu
     for name, d in (("package.json", {"name": "hyperframes", "private": True, "type": "module"}),
                     ("hyperframes.json", {"paths": {"blocks": "compositions", "assets": "assets"}, "media": {"autoProxy": True}})):
         (out / name).write_text(json.dumps(d, indent=2), encoding="utf-8")
+    stamp(out, prev)
     index = f"""<!DOCTYPE html>
 <html lang="pt-BR">
   <head>

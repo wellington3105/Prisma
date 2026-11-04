@@ -248,6 +248,21 @@ def source_fps(video: Path) -> float:
         return 0.0
 
 
+def count_frames(video: Path) -> int | None:
+    """Frames in the first video stream: container `nb_frames`, else a decode count."""
+    for entry, extra in (("stream=nb_frames", []), ("stream=nb_read_frames", ["-count_frames"])):
+        try:
+            out = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", *extra,
+                 "-show_entries", entry, "-of", "default=noprint_wrappers=1:nokey=1", str(video)],
+                capture_output=True, text=True, check=True).stdout.strip()
+            if out.isdigit():
+                return int(out)
+        except Exception:
+            pass
+    return None
+
+
 def shortform_target_fps(video: Path) -> str:
     """Short-form render fps as a string for ffmpeg `-r`.
 
@@ -271,8 +286,18 @@ def extract_segment(
     keep_resolution: bool = False,
     gain_db: float = 0.0,
     streams: str = "av",
+    frames: int | None = None,
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30ms audio fades baked in.
+
+    `frames` (video only): emit EXACTLY this many frames. The J-cut needs it: its
+    plan places each take's audio by the plan, so a picture that comes out one
+    frame long pushes every later take one frame late — the picture lags the
+    voice and the error accumulates. Measured 2026-11-03 before this existed: with
+    `-t` alone, 2 of 8 segments of the regression clip came out +1 frame (fps
+    conversion via `-r`), and Cayenne reel_01 ended 9 frames (300 ms) out of lip
+    sync by take 27. `-t` is then given half a frame of slack so there are always
+    enough frames, and `-frames:v` caps the count.
 
     `streams` selects what lands in the file: "av" (default), "v" (video only) or
     "a" (audio only, PCM when the path ends in .wav). The split exists for the
@@ -344,16 +369,21 @@ def extract_segment(
     else:
         preset, crf = "fast", "20"
 
+    exact = frames is not None and streams == "v"
+    out_fps = None if keep_resolution else shortform_target_fps(source)
+    slack = (0.5 / float(out_fps)) if (exact and out_fps) else (0.02 if exact else 0.0)
     cmd = [
         "ffmpeg", "-y",
         "-ss", f"{seg_start:.6f}",
         "-i", str(source),
-        "-t", f"{duration:.6f}",
+        "-t", f"{duration + slack:.6f}",
     ]
     if streams != "a":
         if vf:
             cmd += ["-vf", vf]
         cmd += ["-c:v", "libx264", "-preset", preset, "-crf", crf, "-pix_fmt", "yuv420p"]
+        if exact:
+            cmd += ["-frames:v", str(int(frames))]
         # Every path above lands on Rec.709 (tonemap for HDR, wide_gamut_chain for
         # BT.2020 SDR, passthrough for the rest), so tag it explicitly. Without this
         # the segments can inherit the source's tags and downstream decoders
@@ -744,10 +774,29 @@ def extract_and_assemble_jcut(
         gain_db = float(r.get("gain_db", 0.0) or 0.0)
         vpath = clips_dir / f"seg_{i:02d}_{r['source']}_v.mp4"
         apath = clips_dir / f"seg_{i:02d}_{r['source']}_a.wav"
+        planned = int(round((p["v_out"] - p["v_in"]) * cfg["fps"]))
         extract_segment(p["src"], p["v_in"], p["v_out"] - p["v_in"], seg_filter,
                         vpath, preview=preview, draft=draft,
-                        keep_resolution=keep_resolution, streams="v")
-        extract_segment(p["src"], p["a_in"], p["a_out"] - p["a_in"], "",
+                        keep_resolution=keep_resolution, streams="v", frames=planned)
+        # Jidoka: the plan is only true if the picture has exactly the planned
+        # frames — a +1 here becomes lip-sync drift on every later take.
+        got = count_frames(vpath)
+        p["frames_planned"], p["frames_got"] = planned, got
+        if got is not None and got != planned:
+            print(f"  ⚠ [{i:02d}] vídeo com {got} frames, planejado {planned} — "
+                  f"a imagem dos takes seguintes sai {got - planned:+d}f da voz", flush=True)
+        # External sound (lapela/recorder, synced by sync_sources.py): the take's
+        # audio comes from that file at  t_ext = t_camera − offset,  so the
+        # picture plan — and lip sync — is untouched (F4.5).
+        a_src, a_start = p["src"], p["a_in"]
+        ext = (edl.get("audio_sources") or {}).get(r["source"])
+        if ext:
+            a_src = resolve_path(ext["path"], edit_dir)
+            a_start = p["a_in"] - float(ext["offset"])
+            if a_start < 0:
+                raise SystemExit(f"[{i:02d}] o áudio externo de {r['source']} começa depois deste take "
+                                 f"(t_ext = {a_start:.3f}s) — confira o offset no sync.json")
+        extract_segment(a_src, a_start, p["a_out"] - p["a_in"], "",
                         apath, preview=preview, draft=draft,
                         keep_resolution=keep_resolution, gain_db=gain_db,
                         streams="a")
@@ -1224,6 +1273,8 @@ def main() -> None:
         if args.jcut_tail_trim is not None:
             jcut["tail_trim_frames"] = max(0, args.jcut_tail_trim)
 
+    if edl.get("audio_sources") and not jcut:
+        raise SystemExit("audio_sources (som externo) só funciona no J-cut: ≥2 ranges e sem --no-jcut")
     if jcut:
         # 1+2. Picture and sound extracted from different ranges, then overlapped.
         plan = extract_and_assemble_jcut(
@@ -1241,7 +1292,10 @@ def main() -> None:
              "audio_start_in_output": round(p["a_off"], 6),
              "audio_duration": round(p["a_out"] - p["a_in"], 6),
              "lead_frames": p["lead_frames"],
-             "tail_trim_frames": p["tail_frames"]}
+             "tail_trim_frames": p["tail_frames"],
+             # measured after extraction: equal to round(video_duration*fps)
+             # when the plan is true (F0.2, 2026-11-03)
+             "video_frames": p.get("frames_got")}
             for p in plan
         ]
         edl["total_duration_s"] = round(

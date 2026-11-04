@@ -12,6 +12,10 @@ Every caption line, card, split band and flash is its own sub-composition clip
 line per caption clip is deliberate: Studio 0.8.x's native caption track does
 not persist timing edits.
 
+Before changing the HTML/GSAP this writes, read references/hyperframes-traps.md
+(measured on 0.8.93: duration → frames rounds UP past a small tolerance, so
+never round clip times to 3 decimals or pad them).
+
 Usage:
     uv run python helpers/export_hyperframes.py <edit> [--out <dir>] [--force]
 
@@ -227,7 +231,7 @@ for i, sp in enumerate(ed.get("splitInserts") or [] if astart else []):
     if s - R[k]["start"] < 0.35:  # opens on a take cut: start WITH the take, no sliver
         s = R[k]["start"]
     src_e, s_e, _ = cut_to_src(sp["end"] - 1e-3)
-    splits.append({"i": i, "source": src, "src": s, "src_end": s_e, "img": sp["src"],
+    splits.append({"i": i, "id": sp.get("id"), "source": src, "src": s, "src_end": s_e, "img": sp["src"],
                    "zoom": sp.get("zoom", 1.25), "focusY": sp.get("focusY", 400),
                    "bandH": sp.get("bandH", 750)})
 # a split that opens inside a take cuts that take in two (same source, straight cut)
@@ -427,7 +431,9 @@ for n, h in enumerate(hl_block.get("items") or []):
 
 # split bands + the flash that announces each one
 for sp in splits:
-    cid = f"split-{sp['i'] + 1}"
+    # the inserts plan id (i01…) names the clip, so "i04 mais curto" in chat is
+    # the same thing the person sees in the Studio; no plan id → the old name
+    cid = f"split-{sp['id']}" if sp.get("id") else f"split-{sp['i'] + 1}"
     img = "assets/split/" + Path(sp["img"]).name  # root-relative: Studio serves from the project root
     shutil.copy2(PUB / sp["img"], ROOT / img)
     style = f"""        #band {{ position: absolute; left: 0; top: 0; width: {W}px; height: {sp['bandH']}px; overflow: hidden; background: #0a0a0c; }}
@@ -470,6 +476,9 @@ for n, it in enumerate(ed.get("inserts") or [] if astart else []):
         b = a + (it["end"] - it["start"])
     srcp = PUB / it["src"]
     if not srcp.exists():
+        # said out loud: this used to drop the insert silently — measured
+        # 2026-11-03, a planned card vanished from the EDITOR with no message
+        print(f"⚠ insert {it.get('id') or n + 1}: asset não encontrado ({it['src']}) — fora do EDITOR")
         continue
     dst = "assets/inserts/" + srcp.name
     shutil.copy2(srcp, ROOT / dst)
@@ -484,7 +493,7 @@ for n, it in enumerate(ed.get("inserts") or [] if astart else []):
             f'object-fit:cover;z-index:{3 + n % 2}"></video>')
         broll_flash.append(a)
     else:  # data card: the Prisma card geometry (780x500, 90px from the top)
-        cid = f"insert-{n + 1:02d}"
+        cid = f"insert-{it['id']}" if it.get("id") else f"insert-{n + 1:02d}"
         style = """        #c { position: absolute; left: 150px; top: 90px; width: 780px; height: 500px; object-fit: contain;
              filter: drop-shadow(0 18px 40px rgba(0,0,0,.35)); }"""
         body = f'        <img id="c" src="{dst}" alt="" />'
@@ -592,10 +601,17 @@ if MUSIC and CARVE.exists():
 # ---- fingerprint + tell the Prisma preview where its editor lives ----
 MARK.write_text(json.dumps({"index_sha1": project_sig(ROOT),
                             "edit": str(EDIT)}, indent=1), encoding="utf-8")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hf_version import check as _hf_check, stamp as _hf_stamp  # noqa: E402
+_hf_warn = _hf_check(ROOT)
+if _hf_warn:
+    print(_hf_warn)
+HF_VER = _hf_stamp(ROOT)  # grava só na 1ª exportação; depois preserva a versão do projeto
 st_p = EDIT / "state.json"
 if st_p.exists():
     state = json.loads(st_p.read_text(encoding="utf-8"))
     state["hyperframes"] = str(ROOT)
+    state["hyperframesVersion"] = HF_VER
     st_p.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 print(f"total {TOTAL}s · {len(clips)} video clips · {len(cues)} caption lines · "
       f"{len(hl_block.get('items') or [])} cards · {len(splits)} splits · {n_ins} inserts · "

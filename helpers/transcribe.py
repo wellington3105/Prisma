@@ -60,6 +60,7 @@ for _s in (_sys.stdout, _sys.stderr):
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -81,9 +82,62 @@ def _whisperx_device() -> tuple[str, str]:
         import torch
         if torch.cuda.is_available():
             return "cuda", "float16"
+        torch_ver = torch.__version__
     except Exception:
-        pass
+        torch_ver = "?"
+    _warn_gpu_unused(torch_ver)
     return "cpu", "int8"
+
+
+_GPU_WARNED = False
+
+
+def _warn_gpu_unused(torch_ver: str) -> None:
+    """Say it out loud when an NVIDIA GPU exists but this run falls back to CPU.
+
+    Measured 2026-11-03 (RTX 5070, Windows): the .venv had torch 2.8.0+cpu, so
+    every transcription ran on CPU for weeks with no message — a 35 s clip took
+    49–86 s against the ~realtime this file promises. CTranslate2 saw the GPU,
+    but faster-whisper on CUDA also failed ("cublas64_12.dll not found"): the
+    CUDA runtime libraries are missing too. Silent fallback is the defect.
+    """
+    global _GPU_WARNED
+    if _GPU_WARNED:
+        return
+    _GPU_WARNED = True
+    import shutil
+    if not shutil.which("nvidia-smi"):
+        return
+    try:
+        gpu = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=10).stdout.strip().splitlines()[0]
+    except Exception:
+        return
+    if not gpu:
+        return
+    if "+cu" in torch_ver:
+        # torch com CUDA já instalado (D7, 2026-11-03) e mesmo assim sem GPU:
+        # não é pacote, é ambiente — CUDA_VISIBLE_DEVICES, driver, GPU ocupada.
+        print(f"  ⚠ GPU {gpu} detectada e torch {torch_ver} tem CUDA, mas a GPU não está "
+              f"visível para este processo (CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<não definida>')}, "
+              f"driver?) → transcrevendo na CPU, ~2× mais lento.", file=sys.stderr, flush=True)
+        return
+    print(f"  ⚠ GPU {gpu} detectada, mas este ambiente usa torch {torch_ver} SEM CUDA → "
+          f"transcrevendo na CPU (bem mais lento que tempo real). "
+          f"Para usar a GPU é preciso instalar o torch com CUDA no .venv do Prisma "
+          f"(ver install.md, seção GPU) — peça antes de instalar.", file=sys.stderr, flush=True)
+
+
+def _asr_options(glossary: list[str] | None) -> dict | None:
+    """Proper nouns and terms as a neutral list prompt (F4.2).
+
+    A list, never sentences: the model continues whatever context it is given,
+    and a context that reads like speech gets "completed" into phrases nobody
+    said (fluxo-de-edicao, `guias/decisoes.md` §4). The check that it did not is
+    to diff against a run without it — see `--glossary` in main().
+    """
+    terms = [t.strip() for t in (glossary or []) if t.strip()]
+    return {"initial_prompt": "Termos: " + ", ".join(terms) + "."} if terms else None
 
 
 def call_whisperx(
@@ -91,6 +145,7 @@ def call_whisperx(
     language: str | None = None,
     model_name: str = WHISPERX_MODEL,
     verbose: bool = False,
+    glossary: list[str] | None = None,
 ) -> dict:
     """Transcribe locally with WhisperX. Returns {words, text, language, _aligned}
     where words are raw {word, start, end} — _to_scribe_words shapes them.
@@ -125,14 +180,15 @@ def call_whisperx(
     # frase enquanto a pessoa segue falando, e cada still isolado parece
     # correto — por isso o defeito sobreviveu a toda a sessão de verificação.
     vad_options = {"vad_onset": 0.200, "vad_offset": 0.250}
+    extra = {"asr_options": _asr_options(glossary)} if glossary else {}
     try:
         model = whisperx.load_model(model_name, device, compute_type=compute_type,
-                                    language=language, vad_options=vad_options)
+                                    language=language, vad_options=vad_options, **extra)
     except TypeError:
         # Versões antigas não aceitam vad_options — melhor transcrever com o
         # padrão do que falhar.
         model = whisperx.load_model(model_name, device, compute_type=compute_type,
-                                    language=language)
+                                    language=language, **extra)
     result = model.transcribe(audio, batch_size=8, language=language)
     detected = result.get("language") or language or ""
 
@@ -193,6 +249,7 @@ def call_whisperx_windowed(
     window: float = 20.0,
     overlap: float = 3.0,
     verbose: bool = False,
+    glossary: list[str] | None = None,
 ) -> dict:
     """Same output as call_whisperx, but transcribed in short overlapping windows.
 
@@ -217,11 +274,12 @@ def call_whisperx_windowed(
     sr = 16000
     total = len(audio) / sr
     vad_options = {"vad_onset": 0.200, "vad_offset": 0.250}
+    extra = {"asr_options": _asr_options(glossary)} if glossary else {}
     try:
         model = whisperx.load_model(model_name, device, compute_type=compute_type,
-                                    language=language, vad_options=vad_options)
+                                    language=language, vad_options=vad_options, **extra)
     except TypeError:
-        model = whisperx.load_model(model_name, device, compute_type=compute_type, language=language)
+        model = whisperx.load_model(model_name, device, compute_type=compute_type, language=language, **extra)
     align = {}
     words: list[dict] = []
     detected = language or ""
@@ -327,6 +385,7 @@ def transcribe_one(
     verbose: bool = True,
     window: float | None = None,
     force: bool = False,
+    glossary: list[str] | None = None,
 ) -> Path:
     """Transcribe a single video. Returns path to transcript JSON.
 
@@ -366,11 +425,13 @@ def transcribe_one(
             print(f"  transcribing {video.stem}.mp3 ({size_mb:.1f} MB)", flush=True)
         if window:
             raw = call_whisperx_windowed(audio, language=language, model_name=model,
-                                         window=window, verbose=verbose)
+                                         window=window, verbose=verbose, glossary=glossary)
         else:
-            raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose)
+            raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose,
+                                glossary=glossary)
 
-    tag = f"whisperx/{model}" + (f"/window{window:g}" if window else "") +         ("" if raw.get("_aligned", True) else "/UNALIGNED")
+    tag = f"whisperx/{model}" + (f"/window{window:g}" if window else "") + \
+        ("/glossary" if glossary else "") + ("" if raw.get("_aligned", True) else "/UNALIGNED")
     payload = {
         "language_code": raw.get("language", ""),
         "language": raw.get("language", ""),
@@ -427,11 +488,19 @@ def main() -> None:
     )
     ap.add_argument("--force", action="store_true",
                     help="Re-transcribe even if cached (previous kept in transcripts_prev/).")
+    ap.add_argument("--glossary", type=Path, default=None,
+                    help="Text file, one term per line (brands, models, names). Passed as a "
+                         "neutral list prompt. Diff the result against a run without it: "
+                         "context can make Whisper invent phrases.")
     args = ap.parse_args()
 
     video = args.video.resolve()
     if not video.exists():
         sys.exit(f"video not found: {video}")
+    glossary = None
+    if args.glossary:
+        glossary = [ln.strip() for ln in args.glossary.read_text(encoding="utf-8").splitlines()
+                    if ln.strip() and not ln.lstrip().startswith("#")]
 
     transcribe_one(
         video=video,
@@ -441,6 +510,7 @@ def main() -> None:
         model=args.model,
         window=args.window,
         force=args.force,
+        glossary=glossary,
     )
 
 

@@ -50,6 +50,49 @@ def probe_duration(path: pathlib.Path) -> float:
     return float(out)
 
 
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".m4v", ".mkv"}
+
+
+def check_media(ed: dict, pub: pathlib.Path) -> list[str]:
+    """Todo vídeo que o edit-data aponta precisa abrir no ffprobe.
+
+    Um clipe copiado enquanto o ffmpeg ainda o gravava não tem o átomo `moov`
+    (fica no fim do arquivo). O Remotion só tropeça nele no meio do render, com
+    um panic do compositor em Rust que não diz qual arquivo — medido no PPF X6
+    (2026-11-03): ~4 min de render perdidos e um still por insert para achar o
+    culpado. Aqui custa um ffprobe por arquivo, antes do encode."""
+    srcs = ["cut.mp4"]
+    for key in ("inserts", "behind", "splitInserts"):
+        for it in (ed.get(key) or []):
+            for k in ("src", "matte", "fg"):
+                if isinstance(it.get(k), str):
+                    srcs.append(it[k])
+    bad = []
+    for s in dict.fromkeys(srcs):
+        p = pub / s
+        if p.suffix.lower() not in VIDEO_EXT:
+            continue
+        if not p.exists():
+            bad.append(f"{s}: não existe em public/")
+            continue
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=nw=1:nk=1", str(p)], capture_output=True, text=True)
+        if r.returncode != 0 or not r.stdout.strip():
+            err = (r.stderr.strip().splitlines() or ["sem duração"])[-1]
+            bad.append(f"{s}: não abre ({err}) — cópia incompleta? recopie depois que o "
+                       f"processo que o grava terminar")
+            continue
+        # Com o índice no começo (+faststart) o ffprobe lê a duração de um arquivo
+        # cortado ao meio; só decodificar o FIM mostra que os dados acabam antes.
+        # O ffmpeg sai com 0 mesmo assim — o sinal é o stderr em -v error.
+        t = subprocess.run(["ffmpeg", "-v", "error", "-sseof", "-0.5", "-i", str(p),
+                            "-frames:v", "1", "-f", "null", "-"], capture_output=True, text=True)
+        if t.stderr.strip():
+            bad.append(f"{s}: o fim não decodifica ({t.stderr.strip().splitlines()[0][:90]}) — "
+                       f"arquivo truncado")
+    return bad
+
+
 # Campos de edit-data.json que exigem a camada WebGL. Manter em sincronia com
 # o schema do template — um campo 3D novo que não entre aqui renderiza preto
 # silenciosamente, que é exatamente a falha que o --gl explícito existe para
@@ -348,6 +391,9 @@ def main() -> None:
         print(f"[direção] {aviso}", flush=True)
 
     if not args.skip_render:
+        ruins = check_media(ed, pub)
+        if ruins:
+            raise SystemExit("mídia que o render não vai conseguir ler:\n  " + "\n  ".join(ruins))
         npx = shutil.which("npx") or shutil.which("npx.cmd")
         if not npx:
             raise SystemExit("npx não encontrado no PATH")
@@ -434,7 +480,9 @@ def main() -> None:
     afade = (f",afade=t=out:st={vd - fade_out:.3f}:d={fade_out:.3f}" if fade_out else "")
     parts.append(f"{last}loudnorm=I=-14:TP=-1:LRA=11{afade}[out]")
 
-    final = edit / "final.mp4"
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from deliveries import next_path, publish
+    final = next_path(edit)  # final_vNN.mp4 — nunca sobrescreve uma entrega (F6.2)
     run(["ffmpeg", "-y", "-v", "error", *inputs,
          "-filter_complex", ";".join(parts),
          "-map", "[vid]", "-map", "[out]",
@@ -444,6 +492,7 @@ def main() -> None:
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
          "-t", str(vd), "-movflags", "+faststart", str(final)],
         label="ffmpeg delivery")
+    publish(edit, final, by="render_phase2")
 
     print(f"pronto: {final} ({vd:.3f}s, {len(sfx_times)} cliques, "
           f"trilha={'sim' if use_music else 'não'})", flush=True)

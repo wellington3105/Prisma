@@ -40,14 +40,24 @@ medium 8–15px (0.4–0.6s) · high 3–6px (0.2–0.3s, sem hold).
 
 Vocabulário fechado do `TransitionSpec`. Cada preset é duração + curva.
 
-| Preset | Duração | GSAP (origem) | Remotion (implementação) |
-|---|---|---|---|
-| `instant` | 0.15s | `expo.inOut` | `Easing.bezier(0.87, 0, 0.13, 1)` |
-| `snappy` | 0.20s | `power4.inOut` | `Easing.bezier(0.76, 0, 0.24, 1)` |
-| `smooth` | 0.40s | `power2.inOut` | `Easing.bezier(0.45, 0, 0.55, 1)` |
-| `dramatic` | 0.50s | `power3.in` → out | `Easing.bezier(0.32, 0, 0.67, 1)` |
-| `gentle` | 0.60s | `sine.inOut` | `Easing.bezier(0.37, 0, 0.63, 1)` |
-| `luxe` | 0.70s | `power1.inOut` | `Easing.bezier(0.37, 0, 0.63, 1)` |
+| Preset | Duração | GSAP (origem) | Remotion (implementação) | Erro máx. |
+|---|---|---|---|---|
+| `instant` | 0.15s | `expo.inOut` | `Easing.bezier(0.87, 0, 0.13, 1)` | 3,7% |
+| `snappy` | 0.20s | `power4.inOut` | `Easing.bezier(0.83, 0, 0.17, 1)` | 3,2% |
+| `smooth` | 0.40s | `power2.inOut` | `Easing.bezier(0.65, 0, 0.35, 1)` | 1,0% |
+| `dramatic` | 0.50s | `power3.inOut` | `Easing.bezier(0.76, 0, 0.24, 1)` | 2,2% |
+| `gentle` | 0.60s | `sine.inOut` | `Easing.bezier(0.37, 0, 0.63, 1)` | 0,2% |
+| `luxe` | 0.70s | `power1.inOut` | `Easing.bezier(0.45, 0, 0.55, 1)` | 0,5% |
+
+Erro máximo = maior distância entre a bezier e a função GSAP exata, em % do
+percurso (medido 2026-11-03, 2001 amostras). No GSAP, `power1` = Quad,
+`power2` = Cubic, `power3` = Quart, `power4` = Quint.
+
+> **Corrigido em 2026-11-03 (D6)** — antes, quatro linhas usavam a bezier da
+> curva um nível abaixo: `snappy` (0.76, 0, 0.24, 1) 4,8% · `smooth`
+> (0.45, 0, 0.55, 1) 7,4% · `luxe` (0.37, 0, 0.63, 1) 2,6% · `dramatic`
+> (0.32, 0, 0.67, 1) **16,9%**, que nem é in-out simétrica. Vale para os
+> próximos vídeos; os já entregues ficam como foram aprovados.
 
 **Por que bezier e não `spring()`:** `spring()` é excelente para entradas de
 elemento (overshoot natural), mas sua duração emerge da física — não se fixa em

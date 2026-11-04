@@ -182,6 +182,26 @@ header {
 /* ---------- tabs ---------- */
 .tabs { display: flex; gap: 8px; margin: 10px 14px 0; flex: 0 0 auto; }
 
+/* Claude's markers — information, blue; warnings yellow. One row that scrolls
+   sideways instead of growing: it must never push the EDITOR down. */
+.agent-strip {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 14px 0; flex: 0 0 auto;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.agent-strip .agent-lbl { font-size: 11px; color: var(--dim); white-space: nowrap; margin-right: 2px; }
+.agent-item {
+  font-size: 11.5px; line-height: 1; padding: 5px 10px; border-radius: 999px;
+  white-space: nowrap; cursor: help;
+  background: rgba(122, 168, 255, 0.12); border: 1px solid rgba(122, 168, 255, 0.5); color: #d4e3ff;
+}
+.agent-item b { font-variant-numeric: tabular-nums; font-weight: 600; margin-right: 6px; color: var(--spec-4); }
+.agent-item.k-alerta, .agent-item.k-borda {
+  background: rgba(255, 209, 102, 0.12); border-color: rgba(255, 209, 102, 0.5); color: #ffe9b0;
+}
+.agent-item.k-alerta b, .agent-item.k-borda b { color: var(--spec-2); }
+.agent-item.out-of-cut { opacity: 0.55; border-style: dashed; }
+
 .tab {
   font-family: inherit;
   /* 700 at 12.5px was chunky. A studio UI labels things in small caps with wide
@@ -798,6 +818,23 @@ kbd {
   box-sizing: border-box;
 }
 .note-chip:hover { background: rgba(255, 84, 112, 0.4); }
+/* Claude's markers (agent_markers.json): information, not a pending edit —
+   blue, or yellow for warnings; a thin flag on the lane's lower half so the
+   user's red notes stay the dominant shape of this track */
+.agent-chip {
+  position: absolute;
+  bottom: 3px;
+  height: 12px;
+  min-width: 6px;
+  border-radius: 3px;
+  background: rgba(122, 168, 255, 0.55);
+  border: 1px solid var(--spec-4);
+  box-sizing: border-box;
+  cursor: help;
+  z-index: 2;
+}
+.agent-chip.k-alerta, .agent-chip.k-borda { background: rgba(255, 209, 102, 0.55); border-color: var(--spec-2); }
+.agent-chip.out-of-cut { opacity: 0.4; border-style: dashed; }
 /* the open IN, still waiting for its OUT */
 .note-pending {
   position: absolute;

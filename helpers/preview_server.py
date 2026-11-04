@@ -274,8 +274,20 @@ class Studio:
         if not hf:
             self.export["log"] = "HyperFrames CLI não encontrado (npm i -g hyperframes@latest)"
             return
+        cmd = [hf]
+        # Versão fixa por projeto (hf_version.py): o Studio — e portanto o Export
+        # final — roda com a versão com que o projeto nasceu, não a instalada.
+        try:
+            from hf_version import check, recorded
+            warn = check(proj)
+            if warn and shutil.which("npx"):
+                cmd = [shutil.which("npx"), "--yes", f"hyperframes@{recorded(proj)}"]
+                print(f"  {warn} → abrindo o Studio com hyperframes@{recorded(proj)}", flush=True)
+                self.export["log"] = warn
+        except Exception:
+            pass
         self.proc = subprocess.Popen(
-            [hf, "preview", str(proj), "--port", str(self.port), "--no-open"],
+            [*cmd, "preview", str(proj), "--port", str(self.port), "--no-open"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.dir = proj
         for _ in range(60):  # the Studio bundle takes a few seconds to come up
@@ -671,10 +683,22 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         edits_p = self.root / "preview_edits.json"
         video = self._current_video()
+        try:
+            from staleness import check as _stale
+            stale = _stale(self.root, state if "error" not in state else None)
+        except Exception:
+            stale = []
+        try:
+            from agent_markers import load as _markers
+            agent_markers = _markers(self.root)
+        except Exception:
+            agent_markers = []
         self._json({
             "state": state,
             "edl": edl,
             "mtimes": mtimes,
+            "staleness": stale,
+            "agentMarkers": agent_markers,
             "videoDuration": probe_duration(video) if video else 0,
             "hasPendingEdits": edits_p.exists(),
             "now": time.time(),
