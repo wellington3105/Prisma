@@ -90,7 +90,7 @@ Phase 1:
 - **`sync_sources.py <camera> <lapela/gravador/tela…> --edit-dir <edit>`** — offset of each extra source against the camera (`t_camera = t_source + offset`) by cross-correlation in the voice band, with confidence (peak / 2nd peak) and clock drift from 3 windows (warns when the sound would slip ≥10 ms across the shared span). Use the offset in the EDL as `"audio_sources": {"<camera key>": {"path": "<lapela.wav>", "offset": <s>}}` and `render.py` takes each take's sound from that file (J-cut only). Measured 2026-11-03: −1.2339 s found for a 1.234 s delay (0.1 ms off), a partial screen-audio placed at +30.0000 s, a 200 ppm recorder flagged (15 ms slip); a cut rendered with the lapela sits 0.4 ms from the camera-audio cut. Low confidence → check one marked word in both before trusting it.
 - **`hesitations.py <video> --edit-dir <edit> [--markers] [--json]`** — hesitations found by the audio, not the text (see "Choosing between takes").
 - **`learnings.py add|list|list-all|mark`** — the aprendizados notebook (`<edit>/aprendizados.md`); see "Memory".
-- **`client_profile.py learn|seed|rule|show|list`** — per-client taste profiles (`<prisma>/perfis/<cliente>/profile.json`); `seed` pre-fills the Estilo gate with the client's approved picks and says where they came from.
+- **`client_profile.py set|learn|seed|rule|show|list`** — per-client taste profiles (`<prisma>/perfis/<cliente>/profile.json`); the client is the one the USER names (`set` records it in `state.json`), never inferred; `seed` pre-fills the Estilo gate with the client's approved picks and says where they came from.
 - **`deliveries.py`** (library) — `render_phase2.py` and `deliver_mix.py` write `final_vNN.mp4` (never over an old delivery: ffmpeg `-y` truncates its target, so a new path every time) and point `final.mp4` at it; a pre-versioning `final.mp4` is kept as `final_v01.mp4`.
 - **`inventory.py <videos_dir>`** — Phase-1 inventory in recording order with VFR / mixed-fps / no-audio alerts (step 1 below).
 - **`regress.py [--update] [--keep]`** — Phase-1 regression on a frozen 35 s clip (`tests/fixture/`): transcription, refined edges, J-cut leads, **frames per take = plan (lip sync)**, cut duration, `verify_cut`, loudness vs `expected.json`. **Run it after changing any Phase-1 helper**; exit 1 = something changed that nobody asked for. `--update` only after the change was asked for and checked. Measured 2026-11-03: deterministic (0 ms edge drift across runs); `TRAIL` 0.06→0.20 failed 5/10 checks while `verify_cut` alone still said `flags: 0`. ~3 min.
@@ -373,12 +373,17 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    user pick the editing style, the caption style and the edit elements in the UI
    (see "The Estilo tab"). Do NOT ask this in chat. Only then read the track
    reference: **`references/shortform.md`** or **`references/longform.md`**.
-   **Client profile:** if this video is for a client who already has one
-   (`client_profile.py list`), run `client_profile.py seed <cliente> <edit>` BEFORE opening the
-   gate — the tab opens with that client's approved picks and the header says
-   where they came from; the user only confirms or changes. After the style is
-   approved on a project, `client_profile.py learn <cliente> --from <edit>` records it
-   (ask the client's name; never guess it from the folder). Measured 2026-11-03:
+   **Client profile — the USER says whose video it is.** Never infer the client
+   from the folder, a logo or plate in the footage, the project name or a past
+   project: profiles are per client, and the client is declared, not detected.
+   If the user named one ("é da Deocar"), run `client_profile.py set <edit> <cliente>`
+   at once; if they did not, ask once at the Phase-1 strategy step ("de quem é
+   este vídeo? ou sem perfil") and accept "sem perfil" — no profile is then read
+   or written. With a client set and a profile on file, run
+   `client_profile.py seed <cliente> <edit>` BEFORE opening the gate — the tab
+   opens with that client's approved picks and says where they came from; the
+   user only confirms or changes. After approval, `client_profile.py learn <cliente> --from <edit>`
+   records it. Both refuse a name that differs from the one set. Measured 2026-11-03:
    the four Cayenne reels had the same style chosen from scratch four times.
    Taste rules from the aprendizados go in with `client_profile.py rule`.
 

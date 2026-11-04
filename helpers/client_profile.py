@@ -17,7 +17,12 @@ Arquivo: `<prisma>/perfis/<cliente>/profile.json`
     {"cliente", "style", "style_origin", "grade", "grade_origin",
      "rules": [{"text", "origin"}], "history": [...]}
 
+O cliente é o que o USUÁRIO diz ("esse é da Deocar"), nunca deduzido de pasta,
+placa, logo ou nome do projeto. `set` grava no state.json; daí em diante
+`seed`/`learn` com outro nome são recusados.
+
 Uso:
+    uv run python helpers/client_profile.py set <edit> <cliente>               # quando o usuário diz de quem é
     uv run python helpers/client_profile.py learn <cliente> --from <edit>      # depois da aprovação
     uv run python helpers/client_profile.py seed <cliente> <edit>             # antes do gate de Estilo
     uv run python helpers/client_profile.py rule <cliente> --text "zoom nos cortes ≤ 1.10" --origin "pedido em 03/11, Cayenne"
@@ -81,8 +86,26 @@ def project_name(edit: Path) -> str:
     return f"{edit.parent.name}/{edit.name}"
 
 
+def bind(edit: Path, cliente: str, force: bool = False) -> dict:
+    """Grava no state.json de quem é o vídeo — o nome que o USUÁRIO disse.
+
+    O cliente nunca é deduzido (pasta, placa, logo, nome do projeto): no PPF X6 a
+    placa dizia DEOCAR e a pasta "PPF X6", e nenhum dos dois é o usuário dizendo.
+    Uma vez gravado, `seed` e `learn` com outro nome são recusados — o perfil
+    errado contaminaria o próximo vídeo do cliente certo."""
+    sp = edit / "state.json"
+    st = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+    if st.get("client") and slug(st["client"]) != slug(cliente) and not force:
+        sys.exit(f"este projeto é do cliente '{st['client']}' (dito pelo usuário), não de "
+                 f"'{cliente}' — se o usuário mandou trocar, use `set … --force`")
+    st["client"] = cliente
+    sp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    return st
+
+
 def learn(cliente: str, edit: Path) -> dict:
     prof = load(cliente, must=False)
+    bind(edit, cliente)
     st = json.loads((edit / "state.json").read_text(encoding="utf-8"))
     style = st.get("style")
     if not style:
@@ -105,6 +128,7 @@ def seed(cliente: str, edit: Path) -> dict:
     prof = load(cliente)
     if not prof.get("style"):
         sys.exit(f"o perfil '{cliente}' ainda não tem estilo")
+    bind(edit, cliente)
     sp = edit / "state.json"
     st = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
     if st.get("style") and st["style"] != prof["style"]:
@@ -121,13 +145,20 @@ def seed(cliente: str, edit: Path) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("set"); b.add_argument("edit", type=Path); b.add_argument("cliente")
+    b.add_argument("--force", action="store_true", help="trocar um cliente já gravado (só se o usuário mandou)")
     l = sub.add_parser("learn"); l.add_argument("cliente"); l.add_argument("--from", dest="src", type=Path, required=True)
     s = sub.add_parser("seed"); s.add_argument("cliente"); s.add_argument("edit", type=Path)
     r = sub.add_parser("rule"); r.add_argument("cliente"); r.add_argument("--text", required=True); r.add_argument("--origin", required=True)
     sh = sub.add_parser("show"); sh.add_argument("cliente")
     sub.add_parser("list")
     a = ap.parse_args()
-    if a.cmd == "learn":
+    if a.cmd == "set":
+        bind(a.edit.resolve(), a.cliente, force=a.force)
+        tem = ppath(a.cliente).exists()
+        print(f"  {a.edit}: cliente = '{a.cliente}' (dito pelo usuário) · "
+              + ("perfil existe → `seed` antes do Estilo" if tem else "sem perfil ainda → `learn` depois da aprovação"))
+    elif a.cmd == "learn":
         prof = learn(a.cliente, a.src.resolve())
         print(f"  perfil '{a.cliente}': estilo {json.dumps(prof['style'], ensure_ascii=False)[:120]}…\n  origem: {prof['style_origin']}\n  → {ppath(a.cliente)}")
     elif a.cmd == "seed":
