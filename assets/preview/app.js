@@ -284,6 +284,20 @@ const STYLE_CATALOG = {
     {id: 'srt', name: 'Legenda .srt (YouTube CC)', landscapeOnly: true, none: true},
     {id: 'none', name: 'Nenhum', none: true},
   ],
+  /* The look of the highlighted-word card (`highlights.variant` + `tone`). Same
+   * list in both aspects: every look exists in both templates (GlassCard.tsx +
+   * GlassCardVariants.tsx). The demos are CSS animations of the ENTRANCE, in the
+   * spirit of the caption demos — not stills. The pick is `cardStyle` in
+   * preview_style.json; mapping in references/shortform.md "Workflow". */
+  cards: [
+    {id: 'prism', name: 'Prisma', card: 'prism'},
+    {id: 'pill', name: 'Pílula', card: 'pill'},
+    {id: 'keynote-dark', name: 'Keynote escuro', card: 'keynote-dark'},
+    {id: 'keynote-light', name: 'Keynote claro', card: 'keynote-light'},
+    {id: 'studio', name: 'Estúdio', card: 'studio'},
+    {id: 'chrome', name: 'Cromo 3D', card: 'chrome'},
+    {id: 'hud', name: 'HUD', card: 'hud'},
+  ],
   elements: [
     {
       id: 'tracking',
@@ -783,6 +797,42 @@ function buildStaticDemo(host, id) {
   };
 }
 
+/* Card demos (`highlights.variant`): pure CSS, looping — each one shows the
+ * ENTRANCE of its look (keyframes `cd-*` in app.css). Nothing to drive from JS,
+ * so no capAnims entry. Text is short on purpose: the box is a thumbnail. */
+function buildCardDemo(host, id) {
+  host.innerHTML = '';
+  const root = el('div', `cd cd-${id.split('-')[0]}${id === 'keynote-light' ? ' light' : ''}`, host);
+  const T = (cls, txt, p) => { const d = el('div', cls, p || root); if (txt != null) d.textContent = txt; return d; };
+  if (id === 'prism' || id === 'pill') {
+    const box = T('cd-box', null);
+    if (id === 'prism') T('cd-lab', 'MODELO', box);
+    T('cd-txt', 'CLA 200', box);
+    if (id === 'prism') T('cd-shine', null, box);
+  } else if (id.startsWith('keynote')) {
+    const box = T('cd-box', null);
+    T('cd-txt', '1,3', box);
+    T('cd-lab', 'turbo', box);
+    T('cd-shine', null, box);
+  } else if (id === 'studio') {
+    const box = T('cd-box', null);
+    T('cd-bar', null, box);
+    T('cd-lab', 'POTÊNCIA · 01', box);
+    T('cd-txt', '163 cv', box);
+    T('cd-ticks', null, box);
+  } else if (id === 'chrome') {
+    const box = T('cd-box', null);
+    T('cd-txt', 'CLA', box);
+    T('cd-shine', null, box);
+  } else if (id === 'hud') {
+    const box = T('cd-box', null);
+    for (const c of ['tl', 'tr', 'bl', 'brr']) T(`cd-br cd-${c}`, null, box);
+    T('cd-scan', null, box);
+    T('cd-lab', 'SCAN · MODELO', box);
+    T('cd-txt', 'CLA 200', box);
+  }
+}
+
 const CAP_BUILDERS = { karaoke: buildKaraokeDemo, stacked: buildStackedDemo, scatter: buildScatterDemo };
 
 // .track-label width = content x offset of the lanes. Owned by CSS (--tl-head,
@@ -851,6 +901,7 @@ function defaultStyle() {
     edit: firstFor('edits'),
     headline: firstFor('headlines'),
     captions: firstFor('captions'),
+    cardStyle: 'prism',
     accent: ACCENT_DEFAULT,
     elements,
     note: '',
@@ -864,8 +915,8 @@ function reconcileStyleWithAspect() {
   // an unknown aspect is not "landscape": wait for the decoded frame size
   if (!S.style || !S.aspectKnown) return;
   const ls = isLandscape();
-  for (const group of ['edits', 'headlines', 'captions']) {
-    const key = group === 'edits' ? 'edit' : group === 'headlines' ? 'headline' : 'captions';
+  for (const group of ['edits', 'headlines', 'captions', 'cards']) {
+    const key = {edits: 'edit', headlines: 'headline', captions: 'captions', cards: 'cardStyle'}[group];
     const cur = STYLE_CATALOG[group].find((o) => o.id === S.style[key]);
     const dead = !cur || (cur.portraitOnly && ls) || (cur.landscapeOnly && !ls);
     if (dead) S.style[key] = firstFor(group);
@@ -1643,7 +1694,7 @@ function updateSummary() {
   const accentBit = accentUsed() ? ` · destaque ${accentName(S.style.accent)}` : '';
   $('setupSummary').textContent =
     `${styleName('edits', S.style.edit)} · headline ${styleName('headlines', S.style.headline)}` +
-    ` · legenda ${styleName('captions', S.style.captions)}${accentBit} · ` +
+    ` · legenda ${styleName('captions', S.style.captions)} · card ${styleName('cards', S.style.cardStyle)}${accentBit} · ` +
     (on.length ? on.map((e) => e.name).join(', ') : 'sem elementos extras');
 }
 
@@ -1751,6 +1802,7 @@ function renderSetup() {
       if (o.mock && isLandscape()) prev.classList.add('ls');
       if (o.demo) capAnims.push(CAP_BUILDERS[o.demo](prev));
       else if (o.hl) buildHeadlineDemo(prev, o.hl);
+      else if (o.card) buildCardDemo(prev, o.card);
       else if (o.stat) {
         const step = buildStaticDemo(prev, o.stat);
         if (step) capAnims.push(step);
@@ -1759,7 +1811,7 @@ function renderSetup() {
       else prev.innerHTML = forAspect(o.mock) || '';
       // Only the abstract mockups get a title. A card that renders the real
       // caption or the real headline is already labelled — by itself.
-      if (o.mock || o.none) el('div', 'opt-name', card).textContent = forAspect(o.name);
+      if (o.mock || o.none || o.card) el('div', 'opt-name', card).textContent = forAspect(o.name);
       el('div', 'opt-mark', card);
     }
     // the ghost only earns its space where there is a single option to explain
@@ -1772,6 +1824,7 @@ function renderSetup() {
   radios($('optEdit'), 'edits', S.style.edit);
   radios($('optHeadline'), 'headlines', S.style.headline);
   radios($('optCaptions'), 'captions', S.style.captions);
+  radios($('optCards'), 'cards', S.style.cardStyle);
   renderAccents();
 
   const host = $('optElements');
@@ -1794,7 +1847,7 @@ $('styleSetup').addEventListener('click', (e) => {
   if (e.target.closest('#optAccent')) return;
   const opt = e.target.closest('.opt:not(.ghost)');
   if (opt) {
-    const key = {edits: 'edit', headlines: 'headline', captions: 'captions'}[opt.dataset.group];
+    const key = {edits: 'edit', headlines: 'headline', captions: 'captions', cards: 'cardStyle'}[opt.dataset.group];
     S.style[key] = opt.dataset.id;
     renderSetup();
     return;
@@ -1820,6 +1873,8 @@ $('setupGo').addEventListener('click', async () => {
     headlineName: styleName('headlines', S.style.headline),
     captions: S.style.captions,
     captionsName: styleName('captions', S.style.captions),
+    cardStyle: S.style.cardStyle,
+    cardStyleName: styleName('cards', S.style.cardStyle),
     accent: S.style.accent,
     accentName: accentName(S.style.accent),
     // whether the picked styles actually paint it — so the skill does not go

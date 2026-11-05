@@ -121,3 +121,12 @@ overrides read at a 1080p basis.
 
 `npx remotion render Longform out/render.mp4`, loudnorm → `edit/final.mp4`.
 Keep the last ~20s visually calm (YouTube end cards).
+
+### Card styles (`highlights.variant`)
+
+`"variant"`: `prism` (default) | `pill` | `keynote` (+ `"tone": "dark"|"light"`,
+default dark) | `studio` | `chrome` | `hud`. Same `items[]` keys for all. `chrome`
+is real extruded metal text (three.js) and needs `--gl=angle`. Fonts: Inter,
+IBM Plex Mono, JetBrains Mono (OFL); the chrome typeface is Inter Bold converted
+to three's JSON (`src/fonts/`, license in `OFL-Inter.txt`). Estilo-tab mapping:
+`references/shortform.md` "Estilo do card 3D".

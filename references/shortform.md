@@ -54,6 +54,7 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica"` | `captions.style` in edit-data.json (+ the director step for stacked) |
 | `captions: "none"` | **no captions at all** — `captions.enabled: false`. Skip `captions_for_remotion.py` too; nothing reads the file |
 | `accent` (hex) | `hook.accent` + `captions.accent`. Only `realce`/`misto`/`stacked` paint it; `accentUsed:false` means the picked styles have none |
+| `cardStyle` | `highlights.variant` + `highlights.tone` — table in "Estilo do card 3D". Missing = `prism` |
 | `elements.tracking` | `face_track.py` + `track.json`; OFF → skip it, fixed frame |
 | `elements.zoomAuto` | the slow push-in inside each segment (`+0.04/segment`) |
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
@@ -463,6 +464,32 @@ uma superfície real; um com 3% é ruído.
 Precisão alcançada: **22.9px de mediana** entre a posição renderizada e a
 projeção prevista. O resíduo é distorção radial da lente (k=0.17), que o Three
 não modela — suficiente para ancorar.
+
+### Estilo do card 3D (`cardStyle` → `highlights.variant` + `tone`)
+
+A palavra em destaque tem sete looks, na linha "Estilo do card 3D" da aba Estilo
+(vale quando `elements.glassPanel` está marcado; **default `prism`**, que renderiza
+exatamente como antes). Existem nos DOIS templates, com as mesmas chaves
+(`items[]`: `text`, `label`, `at`, `dur`, `x`, `y`; tamanho pela altura/largura do
+quadro, sem px de retrato):
+
+| `cardStyle` | `highlights.variant` | `highlights.tone` | Look |
+|---|---|---|---|
+| `prism` | `prism` | — | placa de vidro-prisma 3D (o original) |
+| `pill` | `pill` | — | pílula 2D |
+| `keynote-dark` | `keynote` | `dark` | vidro fosco grafite, palavra enorme em peso leve (Inter), rótulo pequeno embaixo, um brilho que varre depois de assentar |
+| `keynote-light` | `keynote` | `light` | o mesmo em branco fosco |
+| `studio` | `studio` | — | painel preto fosco, barra laranja, leitura monoespaçada "RÓTULO · 01", régua de ticks; número rola até o valor, palavra "digita" |
+| `chrome` | `chrome` | — | a PALAVRA em metal extrudado de verdade (three.js, PBR + ambiente PMREM local). **Exige WebGL** — `render_phase2.py` detecta e passa `--gl=angle` sozinho; em render manual passe `--gl=angle` |
+| `hud` | `hud` | — | hologramas: colchetes ciano desenham, linha de varredura, o texto "decodifica" |
+
+Regras: um look por vídeo (não misture); `cardStyle` ausente = `prism`. Sem fonte
+da Apple, logos ou marcas em nenhum look (keynote usa Inter; studio, IBM Plex Mono;
+hud, JetBrains Mono — todas OFL via `@remotion/google-fonts`). O chrome usa as
+letras do Inter Bold convertidas para typeface do three (`src/fonts/inter-bold.typeface.json`,
+SIL OFL 1.1 — licença em `src/fonts/OFL-Inter.txt`). O SFX do destaque acompanha o
+look (`sfx_events.py`): prism/pill `glass_ping`, keynote `whoosh_air`, studio
+`click1/click2`, chrome `whip_hit` baixo, hud `caption-click`.
 
 ### Painel de vidro (3D) = palavras na moldura prisma (`elements.glassPanel`)
 

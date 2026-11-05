@@ -49,7 +49,16 @@ ROLE = {
     "hook":      (["impact.wav"], 0.45),
     "entrada":   (["whoosh_air.wav", "whoosh-short.mp3", "whoosh.mp3", "whoosh-cinematic.mp3"], 0.28),
     "destaque":  ([SIGNATURE], 0.30),
+    # Estilo do card 3D (`highlights.variant`): cada look tem o seu som. Só usa
+    # arquivos que existem nos DOIS templates (public/sfx sincronizados). Não há
+    # shimmer metálico na biblioteca → o chrome usa whip_hit, baixo.
+    "destaque_keynote": (["whoosh_air.wav"], 0.18),
+    "destaque_studio":  (["click1.mp3", "click2.mp3"], 0.30),
+    "destaque_chrome":  (["whip_hit.wav"], 0.12),
+    "destaque_hud":     (["caption-click.mp3"], 0.25),
 }
+HL_ROLE = {"keynote": "destaque_keynote", "studio": "destaque_studio",
+           "chrome": "destaque_chrome", "hud": "destaque_hud"}  # prism/pill → "destaque"
 
 
 def events(ed: dict) -> list[dict]:
@@ -68,9 +77,10 @@ def events(ed: dict) -> list[dict]:
     hl = ed.get("highlights") or {}
     if hl.get("enabled"):
         off = float(hl.get("offsetS", 0.8))
+        role = HL_ROLE.get(hl.get("variant") or "prism", "destaque")
         for n, it in enumerate(hl.get("items") or []):
-            ev.append({"type": "destaque", "t": float(it["at"]) + off, "ref": f"hl[{n}]",
-                       "what": f"vidro \"{it.get('text', '')}\""})
+            ev.append({"type": "destaque", "role": role, "t": float(it["at"]) + off, "ref": f"hl[{n}]",
+                       "what": f"{hl.get('variant') or 'prism'} \"{it.get('text', '')}\""})
     for n, tr in enumerate(ed.get("transitions") or []):
         ev.append({"type": "transicao", "t": float(tr["at"]), "ref": f"tr[{n}]",
                    "what": f"transição {tr.get('type', 'flash')} (som próprio: {tr.get('sfx', 'cut-click.mp3')})"})
@@ -122,13 +132,13 @@ def draft(ed: dict, idx: dict) -> tuple[list[dict], list[str]]:
             if e["t"] - prev["at"] < tail:
                 notes.append(f"{e['id']}: dentro da cauda de {prev['src']} ({e['t'] - prev['at']:.2f}s < {tail:.2f}s) — sem segundo principal")
                 continue
-        f, align = pick(e["type"], idx, recent, e["t"])
+        f, align = pick(e.get("role", e["type"]), idx, recent, e["t"])
         if not f:
             notes.append(f"{e['id']}: nenhum som da biblioteca serve — sem som (anote o que faltou)")
             continue
         recent[f] = e["t"]
         last_t = e["t"]
-        cues.append({"src": f, "at": round(e["t"], 3), "volume": ROLE[e["type"]][1], "align": align,
+        cues.append({"src": f, "at": round(e["t"], 3), "volume": ROLE[e.get("role", e["type"])][1], "align": align,
                      "note": f"principal · {e['type']} · {e['what']} · {'assinatura' if f == SIGNATURE else align}",
                      "event": e["id"]})
     # escalada + respiro: o maior impacto é o do hook; nada nos 0,5 s antes dele

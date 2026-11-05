@@ -148,3 +148,12 @@ Rules that make it read as a style and not an accident:
   with `paddingBottom = height - bandH - ~96`, and they drop back on their own.
 - The head is re-framed by `VID_ZOOM`/`VID_FOCUS_Y` inside `HookSplitInner`;
   without it the source's headroom leaves a dead gap under the band.
+
+### Card styles (`highlights.variant`)
+
+`"variant"`: `prism` (default) | `pill` | `keynote` (+ `"tone": "dark"|"light"`,
+default dark) | `studio` | `chrome` | `hud`. Same `items[]` keys for all. `chrome`
+is real extruded metal text (three.js) and needs `--gl=angle`. Fonts: Inter,
+IBM Plex Mono, JetBrains Mono (OFL); the chrome typeface is Inter Bold converted
+to three's JSON (`src/fonts/`, license in `OFL-Inter.txt`). Estilo-tab mapping:
+`references/shortform.md` "Estilo do card 3D".

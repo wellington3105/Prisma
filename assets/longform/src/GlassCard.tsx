@@ -45,6 +45,7 @@ import {
   interpolate,
   Easing,
 } from 'remotion';
+import {CardVariant, NEW_VARIANTS, type VariantId} from './GlassCardVariants';
 
 export type Highlight = {
   /** O termo destacado. Curto — é um destaque, não uma frase. */
@@ -80,12 +81,14 @@ export type Highlight = {
  *
  * `pill` — a etiqueta 2D original, mantida para quem já a usa.
  */
-export type CardVariant = 'prism' | 'pill';
+export type CardVariant = 'prism' | 'pill' | VariantId;
 
 export type HighlightBlock = {
   enabled: boolean;
   items: Highlight[];
   variant?: CardVariant;
+  /** keynote: "dark" (default, graphite) | "light" (white frosted). */
+  tone?: 'light' | 'dark';
   /** Fonte do card. Mesma família da headline mantém o vídeo coeso. */
   fontFamily?: string;
   /** Atraso após a palavra ser dita, em segundos. Default 0.8.
@@ -381,7 +384,7 @@ const Prism: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({h,
 };
 
 export const GlassCards: React.FC<{spec: HighlightBlock}> = ({spec}) => {
-  const {fps} = useVideoConfig();
+  const {fps, width, height} = useVideoConfig();
   return (
     <>
       {spec.items.map((h, i) => {
@@ -401,7 +404,19 @@ export const GlassCards: React.FC<{spec: HighlightBlock}> = ({spec}) => {
             durationInFrames={total}
             layout="none"
           >
-            {(spec.variant ?? 'prism') === 'prism' ? (
+            {NEW_VARIANTS.includes(spec.variant as string) ? (
+              <CardVariant
+                variant={spec.variant as VariantId}
+                h={h}
+                total={total}
+                size={height * 0.056}
+                availPx={0.4 * width}
+                cx={h.x ?? 0.26}
+                cy={h.y ?? 0.32}
+                tone={spec.tone}
+                index={i + 1}
+              />
+            ) : (spec.variant ?? 'prism') === 'prism' ? (
               <Prism h={h} total={total} fontFamily={spec.fontFamily} />
             ) : (
               <One h={h} total={total} fontFamily={spec.fontFamily} />

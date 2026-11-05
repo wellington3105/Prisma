@@ -204,6 +204,15 @@ terço da tela, deixando espaço para o falante. Verificado com
 `rect: {x: 0.06, y: 0.24, w: 0.40, h: 0.52}`, que é o painel encostado à
 esquerda com o apresentador livre à direita.
 
+### Estilo do card 3D (16:9)
+
+Os mesmos sete looks do vertical (`prism`, `pill`, `keynote` dark/light, `studio`,
+`chrome`, `hud`) — `cardStyle` → `highlights.variant` + `tone`, tabela em
+`references/shortform.md` "Estilo do card 3D". No horizontal o tamanho vem da
+ALTURA do quadro e a largura máxima do card é 40%; o default de posição é
+`x 0.26, y 0.32` (lado vazio do falante — ajuste `x`/`y` por vídeo, nunca sobre o
+rosto). `chrome` é three.js: render com `--gl=angle` (o `render_phase2.py` já faz).
+
 ### Headline, tela dividida e PiP (16:9)
 
 Tudo da aba Estilo existe nas duas trilhas; as chaves do `edit-data.json` são as

@@ -116,6 +116,10 @@ def _uses_3d(ed: dict) -> bool:
     for t in (ed.get("transitions") or []):
         if isinstance(t, dict) and t.get("type") in ("displace", "refract"):
             return True
+    # card "chrome" (GlassCardVariants.tsx): letras 3D extrudadas em three.js
+    hl = ed.get("highlights") or {}
+    if isinstance(hl, dict) and hl.get("enabled") and hl.get("variant") == "chrome":
+        return True
     return False
 
 

@@ -242,6 +242,8 @@ reported when eight were ticked, because the interface was read from an earlier
 screenshot instead of from the file. The file is the only source of truth, and
 it costs one command.
 
+The Estilo tab also has an **"Estilo do card 3D"** row (`cardStyle`: prism · pill · keynote-dark · keynote-light · studio · chrome · hud) for the highlighted-word card of the glass element — it maps to `highlights.variant` + `tone` (table in `references/shortform.md` "Estilo do card 3D"; `chrome` is real 3D and needs `--gl=angle`, which `render_phase2.py` adds by itself).
+
 The catalog of options and what each pick means is in the track reference, which
 you read next anyway — **`references/shortform.md`** or **`references/longform.md`**.
 

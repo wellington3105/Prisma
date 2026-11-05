@@ -97,6 +97,8 @@ def style_digest(p: Path) -> str:
         f'  · headline: {d.get("headlineName") or d.get("headline")}',
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
+    if d.get("cardStyle"):
+        out.append(f'  · estilo do card 3D (`highlights.variant`/`tone`): {d.get("cardStyleName") or d.get("cardStyle")}')
     # Only worth reporting when the chosen styles actually paint an accent —
     # naming a colour that nothing uses reads as an instruction to go find a
     # place for it.
