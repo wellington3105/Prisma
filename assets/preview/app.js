@@ -169,23 +169,18 @@ const STYLE_CATALOG = {
     },
     {
       id: 'split',
-      /* 9:16 splits the frame; 16:9 does NOT. In widescreen the editorial norm
-       * — documentary, YouTube explainer — is a full-frame cutaway: the B-roll
-       * covers the picture while the narration keeps running. Splitting a 16:9
-       * frame down the middle squeezes the presenter into an awkward portrait
-       * sliver, and it is not what `assets/longform` builds either: its
-       * `broll[]` layer is "full-frame image (Ken-Burns) or muted video
-       * cutaways". The mock has to describe the render, not a symmetry. */
-      name: (ls) => (ls ? 'B-roll em tela cheia' : 'Tela dividida'),
+      /* "Art first". 9:16 stacks art over the head; 16:9 puts them SIDE BY SIDE —
+       * art on the LEFT, the speaker re-framed on the right (Split.tsx reads
+       * `splitInserts[]`, layout "top"). The id keeps its 9:16 meaning ("art
+       * first") so a saved style means the same thing in both aspects. */
+      name: (ls) => (ls ? 'Tela dividida (arte à esquerda)' : 'Tela dividida'),
       mock: (ls) => ls
         ? `<svg viewBox="${MOCK_VB(true)}" xmlns="http://www.w3.org/2000/svg">
         ${MOCK_FRAME(true)}
-        ${MOCK_ART(3, 3, 112, 60)}
-        <!-- the take continues underneath: a corner of the speaker's frame
-             showing through says "cutaway", where a bare photo would read as
-             "the video became a slideshow" -->
-        <rect x="3" y="3" width="26" height="26" rx="5" fill="#0b0e13" opacity=".82"/>
-        ${MOCK_SUBJECT(16, 13, 5, 29, 8)}
+        ${MOCK_ART(3, 3, 55, 60)}
+        <path d="M59.5 3v60" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>
+        <rect x="61" y="3" width="54" height="60" rx="5" fill="rgba(255,255,255,.05)"/>
+        ${MOCK_SUBJECT(88, 28, 10, 63, 16)}
         ${MOCK_CAPTION(38, 47, 42)}
       </svg>`
         : `<svg viewBox="${MOCK_VB(false)}" xmlns="http://www.w3.org/2000/svg">
@@ -199,18 +194,20 @@ const STYLE_CATALOG = {
     },
     {
       id: 'split2',
-      // The landscape counterpart is the picture-in-picture cutaway: B-roll
-      // fills the frame and the talking head stays on screen in a corner. Same
-      // material as the option above, different amount of presence.
-      name: (ls) => (ls ? 'B-roll com apresentador' : 'Tela dividida 2'),
+      /* "Art second": art on the RIGHT in 16:9 (layout "bottom"), underneath in
+       * 9:16. NOTE: before 2026-11-05 this id was the picture-in-picture in
+       * landscape — but `assets/longform` never rendered a PiP (no component read
+       * it), so no 16:9 project ever produced one and nothing saved under that
+       * meaning needs migrating. The PiP now has its own id, `pip`. */
+      name: (ls) => (ls ? 'Tela dividida 2 (arte à direita)' : 'Tela dividida 2'),
       mock: (ls) => ls
         ? `<svg viewBox="${MOCK_VB(true)}" xmlns="http://www.w3.org/2000/svg">
         ${MOCK_FRAME(true)}
-        ${MOCK_ART(3, 3, 112, 60)}
-        <rect x="79" y="30" width="34" height="31" rx="4" fill="#0b0e13"/>
-        <rect x="79.5" y="30.5" width="33" height="30" rx="3.6" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
-        ${MOCK_SUBJECT(96, 42, 6, 61, 10)}
-        ${MOCK_CAPTION(14, 47, 42)}
+        <rect x="3" y="3" width="54" height="60" rx="5" fill="rgba(255,255,255,.05)"/>
+        ${MOCK_SUBJECT(30, 28, 10, 63, 16)}
+        <path d="M58.5 3v60" stroke="rgba(255,255,255,.5)" stroke-width="1.2"/>
+        ${MOCK_ART(60, 3, 55, 60)}
+        ${MOCK_CAPTION(38, 47, 42)}
       </svg>`
         : `<svg viewBox="${MOCK_VB(false)}" xmlns="http://www.w3.org/2000/svg">
         ${MOCK_FRAME(false)}
@@ -240,9 +237,27 @@ const STYLE_CATALOG = {
         ${MOCK_CAPTION(12, 74, 42)}
       </svg>`,
     },
+    {
+      id: 'pip',
+      // 16:9 only: B-roll fills the frame and the speaker stays in a window in the
+      // corner (`broll[].pip`, rendered by Main.tsx). 9:16 has no counterpart —
+      // its "presence" levels are the two splits.
+      landscapeOnly: true,
+      name: 'B-roll com apresentador (PiP)',
+      mock: () => `<svg viewBox="${MOCK_VB(true)}" xmlns="http://www.w3.org/2000/svg">
+        ${MOCK_FRAME(true)}
+        ${MOCK_ART(3, 3, 112, 60)}
+        <rect x="80" y="6" width="32" height="18" rx="3" fill="#0b0e13"/>
+        <rect x="80.5" y="6.5" width="31" height="17" rx="2.6" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
+        ${MOCK_SUBJECT(96, 14, 3.5, 24, 6)}
+        ${MOCK_CAPTION(38, 47, 42)}
+      </svg>`,
+    },
   ],
   // No names on purpose: the sample headline IS the label. Ids and geometry
   // mirror HL_STYLES in the template's Main.tsx — keep the two in step.
+  // Both templates build all four (assets/longform/src/Hook.tsx lays them out for
+  // a wide frame: two lines, <=50% of the width, top-left, clear of the speaker).
   headlines: [
     {id: 'outline', name: 'Contorno', hl: 'outline'},
     {id: 'card', name: 'Cartão', hl: 'card'},
@@ -252,19 +267,20 @@ const STYLE_CATALOG = {
     // card matches the height of its siblings in this row.
     {id: 'none', name: 'Nenhum', none: true, hlbox: true},
   ],
-  /* Burned-in caption styles are a SHORT-FORM feature. `assets/longform`
-   * deliberately ships none of them ("Captions are NOT here — longform ships a
-   * .srt for YouTube CC"), because a 16:9 upload gets real closed captions the
-   * viewer can turn off, and burning them in fights YouTube's own CC layer.
-   * Offering six styles the landscape template cannot build would be the gate
-   * lying about the render — the exact failure the aspect-aware mockups fixed. */
+  /* Burned-in captions exist in BOTH templates now. karaoke / simples /
+   * serifada / classica build in assets/longform too (Captions.tsx,
+   * SimpleCaptions.tsx — landscape layout, sized as ratios of the frame).
+   * stacked / scatter too (StackedCaptions.tsx / ScatterCaptions.tsx: the block
+   * sits in the free third beside the speaker, `captions.side`); `srt` is the
+   * YouTube CC sidecar (landscape-only). Offering a style the active template
+   * cannot build would be the gate lying about the render. */
   captions: [
-    {id: 'karaoke', name: 'Karaokê', demo: 'karaoke', portraitOnly: true},
-    {id: 'stacked', name: 'Empilhado', demo: 'stacked', portraitOnly: true},
-    {id: 'scatter', name: 'Disperso', demo: 'scatter', portraitOnly: true},
-    {id: 'simples', name: 'Simples', stat: 'simples', portraitOnly: true},
-    {id: 'serifada', name: 'Serifada', stat: 'serifada', portraitOnly: true},
-    {id: 'classica', name: 'Clássica', stat: 'classica', portraitOnly: true},
+    {id: 'karaoke', name: 'Karaokê', demo: 'karaoke'},
+    {id: 'stacked', name: 'Empilhado', demo: 'stacked'},
+    {id: 'scatter', name: 'Disperso', demo: 'scatter'},
+    {id: 'simples', name: 'Simples', stat: 'simples'},
+    {id: 'serifada', name: 'Serifada', stat: 'serifada'},
+    {id: 'classica', name: 'Clássica', stat: 'classica'},
     {id: 'srt', name: 'Legenda .srt (YouTube CC)', landscapeOnly: true, none: true},
     {id: 'none', name: 'Nenhum', none: true},
   ],
@@ -293,6 +309,7 @@ const STYLE_CATALOG = {
       // gets written is an editorial call made in edit-data.json, not a UI
       // choice — see references/shortform.md "Transições na troca de
       // layout". The label stays generic on purpose.
+      // 16:9 builds it too: transitions[] / broll[].flash (Cuts.tsx).
       name: 'Transição na troca de layout',
       def: false,
       icon: '<svg viewBox="0 0 16 16"><path d="M3 13.2L13 3.2" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" fill="none"/><path d="M6.6 14L9.4 11.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/><path d="M6.6 4.8L3.8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/></svg>',
@@ -331,6 +348,7 @@ const STYLE_CATALOG = {
       // Entrance curve for inserts. OFF keeps the historical cubic ease, which
       // renders byte-identically to every edit built before this existed —
       // verified, not assumed. ON writes `enter: "spring"` per insert.
+      // 16:9 builds it too: `enter: "spring"` on broll[] cutaways.
       name: 'Entrada com mola',
       def: false,
       icon: '<svg viewBox="0 0 16 16"><path d="M1.8 13.4c1.5 0 1.5-3.4 3-3.4s1.5 3.4 3 3.4 1.5-5.6 3-5.6 1.5 2.6 3 2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.6" cy="3.4" r="1.6"/></svg>',
@@ -407,12 +425,20 @@ let capAnims = []; // step(nowSeconds) per visible caption demo
 // Karaoke: lines of ≤3 words (captions.maxWords), Poppins 900 white, each word
 // rises 34px and fades in over 7 frames; the line is replaced by the next one.
 function buildKaraokeDemo(host) {
-  const s = host.clientWidth / 1080;
+  // landscape: the render sizes are ratios of HEIGHT (Captions.tsx: 5.8% of H =
+  // 63px at 1080p, 10% from the bottom). The card is a 182x64 BAND, not a whole
+  // 16:9 frame: scaling by its height drew ~4px type nobody could read. So the
+  // band is a crop of the central LS_DEMO_BASIS px of a 1920 frame — the
+  // caption at its true size relative to that crop — with shorter lines so they
+  // fit the crop. It shows the LOOK; the line length is the render's call.
+  const ls = isLandscape();
+  const s = ls ? host.clientWidth / LS_DEMO_BASIS : host.clientWidth / 1080;
   host.innerHTML = '';
-  const wrap = el('div', 'cap-demo', host);
+  const wrap = el('div', ls ? 'cap-demo ls' : 'cap-demo', host);
   const words = CAP_TEXT.split(' ');
+  const per = 3;
   const lines = [];
-  for (let i = 0; i < words.length; i += 3) lines.push(words.slice(i, i + 3));
+  for (let i = 0; i < words.length; i += per) lines.push(words.slice(i, i + per));
 
   const STEP = 0.26, ENTER = 7 / FPS_REF, HOLD = 0.6;
   const rise = 34 * s;
@@ -420,7 +446,7 @@ function buildKaraokeDemo(host) {
   let t = 0;
   for (const ln of lines) {
     const box = el('div', 'kar-line', wrap);
-    box.style.fontSize = `${76 * s}px`;
+    box.style.fontSize = `${(ls ? 63 : 76) * s}px`;
     const spans = ln.map((w) => {
       const sp = el('span', '', box);
       sp.textContent = w;
@@ -684,13 +710,29 @@ const STATIC_VARIANTS = {
   serifada: {family: "'Libre Baskerville',serif", weight: 700, size: 84, maxWords: 3, lines: 1, sx: 1, sy: 1, tracking: -1, maxW: 860},
   classica: {family: "'Inter',sans-serif", weight: 500, size: 52, maxWords: 14, lines: 2, sx: 1, sy: 1, tracking: 0, maxW: 840},
 };
+// Landscape (SimpleCaptions.tsx in assets/longform): size = fraction of height,
+// maxW = fraction of width per line, no horizontal squeeze. Expressed on a
+// 1920x1080 basis so the same measureType math applies.
+// 16:9 demo band = crop of the central 960px of a 1920-wide frame
+const LS_DEMO_BASIS = 960;
+const STATIC_VARIANTS_LS = {
+  simples: {size: 65, maxWords: 6, tracking: -1.3, sx: 1, sy: 1, maxW: 1344},
+  serifada: {size: 65, maxWords: 6, tracking: -0.65, sx: 1, sy: 1, maxW: 1344},
+  classica: {size: 54, maxWords: 14, tracking: 0, sx: 1, sy: 1, maxW: 960},
+};
 const ORPHAN_PT = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com)$/i;
 
 function buildStaticDemo(host, id) {
-  const V = STATIC_VARIANTS[id];
-  const s = host.clientWidth / 1080;
+  const ls = isLandscape();
+  const V = ls
+    ? {...STATIC_VARIANTS[id], ...STATIC_VARIANTS_LS[id],
+       // the crop is LS_DEMO_BASIS wide (see buildKaraokeDemo): cap the line to it
+       maxW: Math.min(STATIC_VARIANTS_LS[id].maxW, LS_DEMO_BASIS * 0.9),
+       maxWords: Math.min(STATIC_VARIANTS_LS[id].maxWords, 4)}
+    : STATIC_VARIANTS[id];
+  const s = ls ? host.clientWidth / LS_DEMO_BASIS : host.clientWidth / 1080;
   host.innerHTML = '';
-  const wrap = el('div', 'cap-demo', host);
+  const wrap = el('div', ls ? 'cap-demo ls' : 'cap-demo', host);
   const words = CAP_TEXT.split(' ');
   const wOf = (ws) => measureType(ws.join(' '), V.size, V.weight, V.family, V.tracking) * V.sx;
 

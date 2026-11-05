@@ -7,7 +7,13 @@
  *   - base cut (full-frame)         - B-roll cutaways (image Ken-Burns / video)
  *   - lower-thirds (name/title)     - chapter cards (title at each chapter)
  *   - callouts (emphasis boxes)     - soundtrack bed
- * Captions are NOT here — longform ships a .srt for YouTube CC (captions_srt.py).
+ *   - burned captions (OPTIONAL)    - ABOVE b-roll/glass, `captions.enabled`
+ * Captions are OFF by default: the YouTube delivery ships a .srt sidecar
+ * (captions_srt.py). Turn `captions.enabled` on to burn them in (Reels
+ * horizontal) — render the SAME edit-data twice, once with and once without.
+ * Camera (zoom/tracking), flash cuts, prism highlights and springIn: see README.md.
+ * Styles: karaoke | stacked | scatter | simples | serifada | classica (all 6, as in 9:16).
+ * Also: headline (hook), split screen (splitInserts[], side-by-side), PiP (broll[].pip).
  */
 import {
   AbsoluteFill,
@@ -17,6 +23,7 @@ import {
   Sequence,
   staticFile,
   interpolate,
+  spring,
   Easing,
   useCurrentFrame,
   useVideoConfig,
@@ -26,12 +33,33 @@ import editData from '../public/edit-data.json';
 import {GlassPanel, type GlassSpec} from './GlassPanel';
 import {ShaderTransitions, type ShaderCut, type Energy} from './ShaderTransition';
 import {TrackedScene, type TrackedBlock, type TrackedData} from './TrackedScene';
+import {DynamicVideo, type CameraSpec} from './Camera';
+import {CutFlashes, CutSfx, type CutFlash} from './Cuts';
+import {GlassCards, type HighlightBlock} from './GlassCard';
+import {Captions} from './Captions';
+import {StackedCaptions} from './StackedCaptions';
+import {ScatterCaptions} from './ScatterCaptions';
+import {HookIntro, type HookSpec} from './Hook';
+import {SplitScreen, type SplitInsert} from './Split';
+import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // ============ TYPES + DATA ====================================================
-type Broll = {kind: 'image' | 'video'; src: string; start: number; dur: number};
+type Broll = {
+  kind: 'image' | 'video';
+  src: string;
+  start: number;
+  dur: number;
+  /** 'spring' (elements.springIn): overshoot entrance. Omit = the historical ease. */
+  enter?: 'cubic' | 'spring';
+  /** flash | whip-pan | glitch on the cutaway's in AND out (elements.flashCut). */
+  flash?: 'flash' | 'whip-pan' | 'glitch';
+  /** PiP ("B-roll com apresentador"): the speaker stays in a rounded window over
+   *  the cutaway. `true` = top-right, ~26% of the width. Ratios of the frame. */
+  pip?: boolean | {x?: number; y?: number; w?: number; zoom?: number; focusX?: number; focusY?: number};
+};
 type Lower = {name: string; title?: string; start: number; dur: number};
 type Chapter = {title: string; start: number; dur?: number};
 type Callout = {text: string; start: number; dur: number; x?: number; y?: number};
@@ -51,9 +79,26 @@ export type EditData = {
   // do vídeo — `rect` é 0..1 e o camera solve trabalha no espaço do mundo —
   // então o que muda no horizontal é o ENQUADRAMENTO, não o código.
   direction?: {energy?: Energy};
-  transitions?: ShaderCut[];
+  // flash/whip-pan/glitch (Cuts.tsx) + displace/refract (ShaderTransition.tsx)
+  transitions?: (ShaderCut | CutFlash)[];
+  // Dynamic camera (Camera.tsx): zoomCuts = zooms[], zoomAuto = pushIn, tracking = track.json
+  camera?: CameraSpec;
+  // Headline (Hook.tsx) and split screen (Split.tsx) — same keys as shortform
+  hook?: HookSpec;
+  splitInserts?: SplitInsert[];
+  // Palavras em vidro-prisma (GlassCard.tsx) — elements.glassPanel
+  highlights?: HighlightBlock;
   glass?: GlassBlock;
   tracked?: TrackedBlock;
+  // Legenda queimada (opcional). Tamanho/posição são razões do frame, não px.
+  captions?: {
+    enabled: boolean;
+    style?: 'karaoke' | 'stacked' | 'scatter' | 'simples' | 'serifada' | 'classica';
+    side?: 'left' | 'right' | 'center'; // stacked/scatter: which free third of the frame
+    maxWords?: number;   // palavras por linha (default 6; classica 14)
+    fontScale?: number;  // multiplica o tamanho base (default 1)
+    highlight?: string;  // karaoke: cor da palavra falada
+  };
 };
 
 type GlassBlock = GlassSpec & {
@@ -87,13 +132,39 @@ const Base: React.FC = () => {
   return <OffthreadVideo src={staticFile('cut.mp4')} style={{width, height}} />;
 };
 
+// ============ PiP: the speaker stays on screen over a cutaway ==================
+// A second decode of cut.mp4 in a rounded window, re-framed on him. Top-right so
+// it clears the bottom caption band and the top-left headline.
+const Pip: React.FC<{spec: {x?: number; y?: number; w?: number; zoom?: number; focusX?: number; focusY?: number}; startFrame: number}> = ({spec, startFrame}) => {
+  const {width, height} = useVideoConfig();
+  const w = width * (spec.w ?? 0.26);
+  const h = w * (height / width);
+  const x = width * (spec.x ?? 0.71);
+  const y = height * (spec.y ?? 0.06);
+  const zoom = spec.zoom ?? 1.5;
+  const vw = w * zoom;
+  const vh = h * zoom;
+  const left = clamp(w / 2 - (spec.focusX ?? 0.55) * vw, w - vw, 0);
+  const top = clamp(h / 2 - (spec.focusY ?? 0.38) * vh, h - vh, 0);
+  return (
+    <div style={{position: 'absolute', left: x, top: y, width: w, height: h, borderRadius: height * 0.018, overflow: 'hidden', boxShadow: `0 ${height * 0.016}px ${height * 0.05}px rgba(0,0,0,0.5)`, border: `${Math.max(2, height / 540)}px solid rgba(255,255,255,0.35)`, boxSizing: 'border-box'}}>
+      <OffthreadVideo src={staticFile('cut.mp4')} muted startFrom={startFrame} style={{position: 'absolute', width: vw, height: vh, left, top}} />
+    </div>
+  );
+};
+
 // ============ B-ROLL CUTAWAYS (cover the talker over narration) ================
 const BrollEl: React.FC<{item: Broll; totalFrames: number}> = ({item, totalFrames}) => {
   const f = useCurrentFrame();
+  const {fps} = useVideoConfig();
   const inn = interpolate(f, [0, 10], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const out = interpolate(f, [totalFrames - 10, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const op = Math.min(inn, out);
-  const grow = interpolate(f, [0, totalFrames], [1, 1.06], {extrapolateRight: 'clamp'}); // Ken-Burns
+  // elements.springIn: the entrance overshoots slightly and settles ("arrived",
+  // not "appeared"). The EXIT stays interpolate so it lands on the last frame.
+  const springed = item.enter === 'spring' ? spring({frame: f, fps, config: {damping: 14, mass: 0.55}, durationInFrames: 14}) : null;
+  const op = springed === null ? Math.min(inn, out) : Math.min(clamp(springed, 0, 1), out);
+  const kb = interpolate(f, [0, totalFrames], [1, 1.06], {extrapolateRight: 'clamp'}); // Ken-Burns
+  const grow = springed === null ? kb : kb * interpolate(springed, [0, 1], [0.985, 1]);
   return (
     <AbsoluteFill style={{opacity: op}}>
       <Sfx src="whoosh.mp3" />
@@ -102,6 +173,7 @@ const BrollEl: React.FC<{item: Broll; totalFrames: number}> = ({item, totalFrame
       ) : (
         <OffthreadVideo src={staticFile(item.src)} muted style={{width: '100%', height: '100%', objectFit: 'cover'}} />
       )}
+      {item.pip ? <Pip spec={item.pip === true ? {} : item.pip} startFrame={Math.round(item.start * fps)} /> : null}
     </AbsoluteFill>
   );
 };
@@ -224,11 +296,20 @@ export const Main: React.FC = () => {
     (t): t is ShaderCut =>
       Boolean(t) && (SHADER_CUT_TYPES as readonly string[]).includes(t.type as string),
   );
+  // flash/whip-pan/glitch: explicit transitions[] + the in/out of any broll with `flash`
+  const brollCuts: CutFlash[] = D.broll.flatMap((b) =>
+    b.flash ? [{at: b.start, type: b.flash}, {at: b.start + b.dur, type: b.flash}] : [],
+  );
+  const splitCuts: CutFlash[] = (D.splitInserts ?? []).flatMap((b) =>
+    b.flash ? [{at: b.start, type: b.flash}, {at: b.end, type: b.flash}] : [],
+  );
+  const cuts = [...((D.transitions ?? []) as CutFlash[]), ...brollCuts, ...splitCuts];
   return (
     <AbsoluteFill style={{backgroundColor: 'black'}}>
       {D.soundtrack.enabled ? <Soundtrack /> : null}
-      <Base />
+      {D.camera?.enabled ? <DynamicVideo /> : <Base />}
       {Timed(D.broll, 4, (it, d) => <BrollEl item={it} totalFrames={d} />)}
+      {D.splitInserts?.length ? <SplitScreen items={D.splitInserts} /> : null}
       {Timed(D.chapters, 2.4, (it, d) => <ChapterCard title={it.title} totalFrames={d} />)}
       {Timed(D.lowerThirds, 4, (it, d) => <LowerThird item={it} totalFrames={d} />)}
       {D.glass?.enabled ? <GlassLayer spec={D.glass} /> : null}
@@ -236,7 +317,21 @@ export const Main: React.FC = () => {
         <TrackedScene spec={D.tracked} data={trackedData} />
       ) : null}
       <ShaderTransitions items={shaderCuts} energy={D.direction?.energy} />
+      {cuts.length ? <CutSfx items={cuts} /> : null}
+      {cuts.length ? <CutFlashes items={cuts} /> : null}
+      {D.hook?.enabled ? <HookIntro /> : null}
+      {/* Legenda queimada: acima de b-roll/vidro/transições para ficar legível nos cutaways */}
+      {D.captions?.enabled
+        ? D.captions.style === 'stacked'
+          ? <StackedCaptions />
+          : D.captions.style === 'scatter'
+            ? <ScatterCaptions />
+            : SIMPLE_VARIANTS[D.captions.style as string]
+              ? <SimpleCaptions variant={D.captions.style as string} />
+              : <Captions />
+        : null}
       {Timed(D.callouts, 3, (it, d) => <CalloutEl item={it} totalFrames={d} />)}
+      {D.highlights?.enabled ? <GlassCards spec={{...D.highlights, fontFamily: D.highlights.fontFamily ?? fontFamily}} /> : null}
     </AbsoluteFill>
   );
 };

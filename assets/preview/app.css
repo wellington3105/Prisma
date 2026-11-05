@@ -1140,6 +1140,8 @@ kbd {
    Geometry is scaled from 1080-wide, so every ratio matches the render.
    Positions/opacities are written by JS each frame (capAnims in app.js). */
 .cap-demo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+/* 16:9: captions sit low (baseline 10% of height from the bottom), like the render */
+.cap-demo.ls .kar-line, .cap-demo.ls .stat-demo { bottom: 10%; }
 .kar-line {
   position: absolute;
   display: flex;

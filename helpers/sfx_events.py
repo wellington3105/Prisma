@@ -57,11 +57,14 @@ def events(ed: dict) -> list[dict]:
     hook = ed.get("hook") or {}
     if hook.get("enabled", True) and hook.get("text"):
         ev.append({"type": "hook", "t": 0.05, "ref": "hook", "what": f"headline \"{hook['text'][:30]}\""})
-    for key in ("inserts", "splitInserts"):
+    # `broll` = cutaways em tela cheia do template 16:9 (assets/longform) — o mesmo
+    # evento de entrada que um insert do vertical (paridade 2026-11-05).
+    for key in ("inserts", "splitInserts", "broll"):
         for n, it in enumerate(ed.get(key) or []):
             ref = it.get("id") or f"{key}[{n}]"
+            kind = {"inserts": "card", "splitInserts": "split", "broll": "b-roll"}[key]
             ev.append({"type": "entrada", "t": float(it["start"]), "ref": ref,
-                       "what": f"{'card' if key == 'inserts' else 'split'} {Path(str(it.get('src', ''))).name}"})
+                       "what": f"{kind} {Path(str(it.get('src', ''))).name}"})
     hl = ed.get("highlights") or {}
     if hl.get("enabled"):
         off = float(hl.get("offsetS", 0.8))

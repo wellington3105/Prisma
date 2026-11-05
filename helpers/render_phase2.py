@@ -398,7 +398,14 @@ def main() -> None:
         if not npx:
             raise SystemExit("npx não encontrado no PATH")
 
-        cmd = [npx, "remotion", "render", "Reels", "out/render.mp4"]
+        # O template copiado decide a composição: shortform = "Reels",
+        # longform = "Longform" (legenda queimada 16:9 vive nele também).
+        try:
+            root_src = (rem / "src" / "Root.tsx").read_text(encoding="utf-8")
+        except OSError:
+            root_src = ""
+        comp = "Longform" if 'id="Longform"' in root_src else "Reels"
+        cmd = [npx, "remotion", "render", comp, "out/render.mp4"]
 
         # --gl: sem backend explícito o Chromium headless pode não expor WebGL,
         # e a ThreeCanvas rende PRETO — um defeito que se disfarça de "o shader

@@ -250,26 +250,40 @@ you read next anyway — **`references/shortform.md`** or **`references/longform
 for the real aspect, so a 16:9 job is offered 16:9 layouts. Set `awaitingStyle`
 on longform jobs too; do not fall back to asking the layer questions in chat.
 
-**The landscape layouts are NOT the portrait ones rotated.** 9:16 splits the
-frame because it is tall; 16:9 uses a **full-frame cutaway** — the B-roll covers
-the picture while narration continues, which is both the editorial norm and what
-`assets/longform` actually renders (`broll[]` is "full-frame image (Ken-Burns) or
-muted video cutaways"). Splitting a widescreen frame down the middle would
-squeeze the presenter into a portrait sliver and describe a render the template
-never builds. Hence the names differ per aspect:
+**Every option the gate offers exists in BOTH aspects** (the user's decision,
+2026-11-05) — with one exception each way. The landscape layouts are NOT the
+portrait ones rotated: a tall frame stacks art over the speaker, a wide one puts
+them SIDE BY SIDE. The ids keep their 9:16 meaning ("art first" / "art second"),
+so a saved style means the same thing in both; only the names and the geometry
+change:
 
 | id | 9:16 | 16:9 |
 |---|---|---|
 | `limpa` | Limpa | Limpa |
-| `split` | Tela dividida (arte em cima) | B-roll em tela cheia |
-| `split2` | Tela dividida 2 (arte embaixo) | B-roll com apresentador (PiP) |
+| `split` | Tela dividida (arte em cima) | Tela dividida (arte à esquerda) |
+| `split2` | Tela dividida 2 (arte embaixo) | Tela dividida 2 (arte à direita) |
+| `broll` | B-roll em tela cheia | B-roll em tela cheia |
+| `pip` | — (16:9 only) | B-roll com apresentador (PiP) |
 
-**Caption styles are short-form only.** `assets/longform` ships none of them on
-purpose — a 16:9 upload gets a real `.srt` the viewer can toggle, and burning
-type in fights YouTube's own CC layer. The gate therefore offers the six burned
-styles in portrait and only `srt` + `Nenhum` in landscape; `captions: "srt"`
-means run `captions_srt.py` and deliver the sidecar, not render text into the
-picture. Options carry `portraitOnly` / `landscapeOnly` and are HIDDEN, not
+(`assets/longform` never rendered a PiP before, so nothing saved under the old
+landscape meaning of `split2` needs migrating.) Splits are data-driven by
+`splitInserts[]` (`Split.tsx`), PiP by `broll[].pip`; both take a `flash` for the
+layout-change transition. **Headlines** (`outline`/`card`/`realce`/`misto`) are
+built in both: in 16:9 `Hook.tsx` lays them out two lines, ≤50% of the width,
+top-left, clear of the speaker (`hook.side` to move it).
+
+**Caption styles by aspect.** All six burned styles — `karaoke`, `stacked`,
+`scatter`, `simples`, `serifada`, `classica` — exist in BOTH templates;
+`assets/longform` has its own landscape layout for each, sized as ratios of the
+frame (so 1080p and 4K match): karaoke/simples/serifada/classica low and
+centred, `stacked`/`scatter` in the free third beside the speaker
+(`captions.side`). `stacked` needs `caption_style.py` → `public/caption-cues.json`
+on longform too. `srt` is the only landscape-only caption pick: in 16:9,
+`captions: "srt"` means run `captions_srt.py` and deliver the sidecar, not render
+text into the picture — that is the YouTube file. For Reels horizontal pick a
+burned style; to deliver BOTH, render the same edit-data twice
+(`captions.enabled` true → Reels, false → YouTube + `.srt`), never two different
+edits. Options may carry `landscapeOnly` (`srt`, `pip`) and are HIDDEN, not
 disabled, in the aspect that cannot build them — and a pick that dies when the
 aspect changes is snapped to a valid one before the cards are drawn
 (`reconcileStyleWithAspect`).
