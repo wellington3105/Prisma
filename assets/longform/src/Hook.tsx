@@ -40,6 +40,10 @@ export type HookSpec = {
   strokePx?: number;
   paddingTop?: number;
   lineHeight?: number;
+  /** 0.8–1 — written by helpers/safe_layout.py when the title must shrink to clear the face. Absent = 1. */
+  scale?: number;
+  lockPos?: boolean;
+  autoPlaced?: boolean;
 };
 
 const D = editData as unknown as {hook?: HookSpec; accent?: string};
@@ -103,7 +107,7 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   // `card` and `realce` add horizontal padding around the text — budget for it
   const pad = styleId === 'card' ? 0.92 : styleId === 'realce' ? 0.84 : 1;
   const safeW = (H.safeWidth ? H.safeWidth * (width / 1920) : width * SAFE_W) * pad;
-  const size = fitHeadline(lines, S.weights, safeW, cap, 40 * k);
+  const size = Math.floor(fitHeadline(lines, S.weights, safeW, cap, 40 * k) * (H.scale ?? 1));
   const lh = H.lineHeight ?? S.lh;
   const top = H.paddingTop != null ? H.paddingTop * k : S.top * height;
   const side = H.side ?? 'left';

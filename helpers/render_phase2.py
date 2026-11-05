@@ -394,6 +394,28 @@ def main() -> None:
     for aviso in check_direction(ed, pub):
         print(f"[direção] {aviso}", flush=True)
 
+    # Rosto livre (helpers/safe_layout.py): overlays que cobrem o rosto. Só AVISA —
+    # reposiciona sozinho apenas com `"safeLayout": "auto"` no edit-data.
+    if not args.skip_render:
+        try:
+            auto = ed.get("safeLayout") == "auto"
+            cmd = [sys.executable, str(pathlib.Path(__file__).with_name("safe_layout.py")), str(edit),
+                   "--platform", str(ed.get("platform") or "all"), "--apply" if auto else "--report"]
+            out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+            flagged = [ln for ln in out.stdout.splitlines() if ln.lstrip().startswith(("COLISÃO", "SEM ESPAÇO", "MOVIDO", "DIVIDIDO", "FOCO"))]
+            for ln in flagged:
+                print(f"[rosto] WARNING{ln}".replace("→", "->").replace("×", "x"), flush=True)
+            if auto:
+                print("[rosto] safeLayout=auto — posições aplicadas em edit-data.json (backup edit-data.before_safe_layout.*)", flush=True)
+                ed = json.loads(ed_p.read_text(encoding="utf-8"))
+            elif flagged:
+                print("[rosto] rode `safe_layout.py <edit> --apply` (ou ponha \"safeLayout\": \"auto\") para corrigir; "
+                      "`\"lockPos\": true` protege um item.", flush=True)
+            if out.returncode not in (0, 1):
+                print(f"[rosto] safe_layout falhou ({out.returncode}): {out.stderr.strip()[-200:]}", flush=True)
+        except Exception as e:  # never block a render on the safety net
+            print(f"[rosto] safe_layout ignorado: {e}", flush=True)
+
     if not args.skip_render:
         ruins = check_media(ed, pub)
         if ruins:

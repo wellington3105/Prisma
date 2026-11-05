@@ -94,6 +94,9 @@ export type EditData = {
     strokePx?: number;     // outline: black stroke width (default 12)
     paddingTop?: number;   // distance from top (per-style default)
     lineHeight?: number;
+    scale?: number;        // 0.8–1, written by helpers/safe_layout.py; absent = 1
+    lockPos?: boolean;
+    autoPlaced?: boolean;
   };
   captions: {
     enabled: boolean;
@@ -674,7 +677,7 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   // the headline becomes three lines again — which is exactly what happened with
   // the uppercase "card" style at the project's inherited fontSizePx of 66.
   const cap = H.fontSizePx ?? H.maxFontPx ?? S.cap;
-  const size = fitHeadline(lines, {...S, cap, safeW: H.safeWidth ?? S.safeW});
+  const size = Math.floor(fitHeadline(lines, {...S, cap, safeW: H.safeWidth ?? S.safeW}) * (H.scale ?? 1));
   const lh = H.lineHeight ?? S.lh;
   const top = H.paddingTop ?? S.top;
   const shell: React.CSSProperties = {

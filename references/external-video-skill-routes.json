@@ -21,6 +21,9 @@
     {"id": 20, "slug": "visual-skills", "repo": "visual-skills", "primary": "video/SKILL.md"},
     {"id": 21, "slug": "video-toolkit", "repo": "claude-code-video-toolkit", "primary": "skills/openclaw-video-toolkit/SKILL.md"},
     {"id": 22, "slug": "openmontage", "repo": "OpenMontage", "primary": ".claude/skills/create-video/SKILL.md"},
-    {"id": 24, "slug": "anthropic-skill-creator", "repo": "anthropic-skills", "primary": "skills/skill-creator/SKILL.md"}
+    {"id": 24, "slug": "anthropic-skill-creator", "repo": "anthropic-skills", "primary": "skills/skill-creator/SKILL.md"},
+    {"id": 25, "slug": "ghost-editor", "repo": "ghost-editor", "primary": "SKILL.md"},
+    {"id": 26, "slug": "reelmimic", "repo": "reelmimic", "primary": "README.md"},
+    {"id": 27, "slug": "pixel2motion", "repo": "pixel2motion", "primary": "SKILL.md"}
   ]
 }

@@ -465,6 +465,51 @@ Precisão alcançada: **22.9px de mediana** entre a posição renderizada e a
 projeção prevista. O resíduo é distorção radial da lente (k=0.17), que o Three
 não modela — suficiente para ancorar.
 
+### Rosto livre (safe_layout.py)
+
+Card, headline, bloco de legenda `stacked`/`scatter` e callout têm posição fixa no
+`edit-data.json`; quando o falante se mexe, eles passam em cima da cabeça. O
+`helpers/safe_layout.py` mede onde o rosto está a cada instante e põe cada overlay
+onde não o cobre (lógica de posicionamento portada do ghost-editor, MIT:
+abaixo do queixo -> acima da cabeça -> ao lado -> reduzido a 90%/80%, sempre dentro
+da área segura da plataforma).
+
+**Quando rodar:** DEPOIS de escrever o `edit-data.json` (highlights, hook, legenda),
+ANTES do render. O `render_phase2.py` já roda `--report` sozinho e imprime
+`[rosto] WARNING` para cada colisão; com `"safeLayout": "auto"` no edit-data ele
+aplica sozinho (backup `edit-data.before_safe_layout.<ts>.json`).
+
+```bash
+uv run python helpers/safe_layout.py <edit> --report                    # só relata
+uv run python helpers/safe_layout.py <edit> --apply [--platform all]    # reposiciona
+```
+
+- `--platform instagram|tiktok|shorts|youtube|all` (default `all`). 9:16: faixas de
+  UI da plataforma (topo ~14%, base ~20%, coluna de botões à direita só na metade
+  de baixo — medidas do ghost-editor); 16:9: margem de título de 5%.
+- Rosto: `remotion/public/faces.json` (>= 5 fps, caixa com cabelo e queixo; não leia
+  esse arquivo, é dado de máquina). Detector: YuNet se `helpers/models/face_detection_yunet_2023mar.onnx`
+  existir (`--fetch-model` baixa, MIT), senão OpenCV Haar frontal + perfil; caixas
+  fora de consenso são descartadas e as falhas curtas seguram a última posição.
+  Janelas cobertas por B-roll em tela cheia ou tela dividida são ignoradas (o
+  falante não está na tela). O zoom/tracking da `camera` entra na conta.
+- Move: `highlights.items[]` (x, y e `scale` 0.8–1), `hook` (`paddingTop`, `side` no
+  16:9), `callouts` (x, y), bloco `stacked`/`scatter` (`captions.side` no 16:9,
+  `stackedOffsetY`/`scatterOffsetY` no 9:16), e `focusX/focusY` de `splitInserts`.
+  Sem espaço único para o card na janela inteira, ele é DIVIDIDO em dois itens
+  (o rosto atravessou o quadro). lowerThirds/chapters só são avisados (sem chaves de posição).
+- **Título (`hook`) e callouts vivem no TOPO:** só trocam de lado na mesma faixa (o canto mais
+  distante do rosto primeiro) -> encolhem a 90% / 80% (`hook.scale`; ausente = 1) -> senão
+  NÃO se movem e o relatório diz `sem espaço no topo — use B-roll/plano aberto sob o título ou
+  encurte o texto`. Nunca abaixo do queixo nem na faixa do meio. Hook sobre B-roll em tela
+  cheia / tela dividida = OK, não mexe.
+- Item movido recebe `"autoPlaced": true`; **`"lockPos": true` nunca é movido** (só relatado).
+- `SEM ESPAÇO` = nenhuma posição livre (close-up): faça aquela janela em tela cheia
+  (B-roll) ou encurte o texto. O `--report` sai com código 1 se algo precisa de ajuste.
+- Limite honesto: o detector padrão (Haar) acha o rosto em ~64% das amostras brutas
+  (~40% consistentes) no CLA200; os buracos seguram a última posição. Com YuNet o
+  número sobe — rode `--fetch-model` uma vez.
+
 ### Estilo do card 3D (`cardStyle` → `highlights.variant` + `tone`)
 
 A palavra em destaque tem sete looks, na linha "Estilo do card 3D" da aba Estilo

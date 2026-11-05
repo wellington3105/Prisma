@@ -26,7 +26,7 @@ def load_catalog() -> tuple[dict, dict, dict]:
     routes = routes_doc["routes"]
     items = {item["name"]: item for item in manifest["items"]}
     packs = {pack["name"]: pack for pack in manifest["motion_packs"]}
-    if len(routes) != 21 or len(items) != 21 or len(packs) != 18:
+    if len(routes) != 24 or len(items) != 24 or len(packs) != 18:
         raise CatalogError("Catalog count differs from the approved inventory")
     for name in (*items, *packs):
         if name in (".", "..") or "/" in name or "\\" in name:

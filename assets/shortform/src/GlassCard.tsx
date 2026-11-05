@@ -62,6 +62,12 @@ export type Highlight = {
   accent?: string;
   /** Vidro escuro para cena clara (o padrão), claro para cena escura. */
   dark?: boolean;
+  /** Multiplicador de tamanho (0.8–1). Escrito por helpers/safe_layout.py quando o card não cabe
+   *  em tamanho cheio fora do rosto. Omitido = 1 (render idêntico). */
+  scale?: number;
+  /** helpers/safe_layout.py: `lockPos` impede o reposicionamento automático; `autoPlaced` marca o item movido. */
+  lockPos?: boolean;
+  autoPlaced?: boolean;
 };
 
 /**
@@ -143,7 +149,7 @@ const One: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({
   // termo longo é no edit-data.json, e o gate avisa. Mas um card cortado pela
   // borda da tela é pior que um card 15% menor.
   const excesso = Math.max(1, h.text.length / MAX_CHARS_CARD);
-  const size = (width * 0.046) / excesso;
+  const size = (width * 0.046) / excesso * (h.scale ?? 1);
 
   return (
     <AbsoluteFill
@@ -244,7 +250,7 @@ const Prism: React.FC<{h: Highlight; total: number; fontFamily?: string}> = ({h,
   const scale = 0.86 + 0.14 * vis;
 
   const excesso = Math.max(1, h.text.length / MAX_CHARS_PRISM);
-  const size = (width * 0.052) / excesso;
+  const size = (width * 0.052) / excesso * (h.scale ?? 1);
   const R = size * 0.62;
 
   // O aro iridescente gira devagar: a luz "corre" pela aresta do prisma.
@@ -402,7 +408,7 @@ export const GlassCards: React.FC<{spec: HighlightBlock}> = ({spec}) => {
                 variant={spec.variant as VariantId}
                 h={h}
                 total={total}
-                size={width * 0.052}
+                size={width * 0.052 * (h.scale ?? 1)}
                 availPx={0.82 * width}
                 cx={h.x ?? 0.5}
                 cy={h.y ?? 0.3}

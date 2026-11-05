@@ -183,3 +183,38 @@ arquivo mudar. Ao trocar um som ali, use `sfx_peak.peak_time()`.
 - [ ] nenhum arquivo repetido em 20 s;
 - [ ] respiro de 0,5 s antes do maior impacto;
 - [ ] nenhum som sob tela cheia nem em jump cut invisível.
+
+## 14. QA do mix (`qa_mix.py`)
+
+Rode **depois do `deliver_mix.py` e antes de entregar**:
+`uv run python helpers/qa_mix.py <edit> [--final final_vNN.mp4] [--fix]`.
+Não escreve nada no `<edit>` (stems temporários) a não ser com `--fix`. Código de saída 1 se
+algo for marcado. Portado de `kurbaitaev/ghost-editor` (MIT). Medido no CLA200 (2026-11): as
+duas entregas fechavam em −14,0 LUFS mas com pico real **−0,9 dBTP**, e ninguém conferia se cada
+golpe de SFX era ouvido ou passava da voz.
+
+O que mede e os limites:
+
+| Checagem | Limite | Marca |
+|---|---|---|
+| Streams / duração | 1 vídeo + 1 áudio; duração do final = `cut.mp4` ±0,25 s | streams ou duração fora |
+| Loudness integrado | −14 ±1 LUFS | fora da faixa |
+| **Pico real (TP)** | **≤ −1,0 dBTP** (`ebur128=peak=true`) | acima |
+| Cada SFX vs voz (nos stems) | pico real do golpe em torno de `at` (respeita `align`) contra o pico p95 da voz numa janela de ±1,5 s | `> +1,5 dB` "alto demais"; `< −22 dB` "inaudível"; golpe sobre a fala a `< 3 dB` da voz "mascara palavra" |
+| Silêncio dentro da fala | > 0,8 s (medido no stem da voz — no final a trilha tapa o silêncio) | devia ter sido cortado |
+| Trilha sob a fala | RMS da trilha / RMS da voz nas janelas de fala, esperado −15 a −20 dB | `> −12` ou `< −26 dB` |
+
+Cada golpe sai impresso com o nível relativo à voz (dB): use a lista para **equilibrar o
+conjunto** (um whoosh a −7 e um ping a −12 numa mesma sequência soam desiguais), não só
+para achar erro. Faixa saudável de papel: apoio/UI −12 a −18, whoosh −8 a −14, impacto −3 a −8.
+
+**Regra do TP:** a entrega fica ≤ −1,0 dBTP **medido no arquivo final** (depois do AAC), não
+no filtro. `deliver_mix.py` já mira −1,5 (loudnorm TP=−1,5 + alimiter) e imprime o TP medido.
+Se mesmo assim passar de −1,0, `qa_mix.py --fix` grava `final_vNN.mp4` só com limiter de pico
+(tetos −1,5/−2,0/−2,5 até caber), **nunca soma ganho** — ganho desfaz o equilíbrio SFX/voz —,
+remede e mostra TP antes/depois. Corrigir um SFX alto demais é no `volume` do cue + novo
+`deliver_mix`, não no `--fix`.
+
+Os stems vêm de `<edit>/stems/` (`deliver_mix.py --stems`) se existirem; senão o `qa_mix`
+gera numa pasta temporária (`--stems-only`). Stems antigos de outra versão do `edit-data`
+enganam: apague `<edit>/stems/` depois de mudar cues.

@@ -29,12 +29,16 @@ O que faz, na ordem:
      NAS PAUSAS (≈0.30), não sob a fala.
   3. SFX: `sfxCues` [{src, at, volume}] + o clique de cada `transitions[]`.
      `src` é procurado em <edit>/sfx_cinema, remotion/public/sfx, remotion/public.
-  4. loudnorm −14 LUFS / −1 dBTP em DUAS passadas (a 1ª mede, a 2ª aplica
-     linear) — passada única "bombeia" quando a trilha sobe nas pausas.
+  4. loudnorm −14 LUFS em DUAS passadas (a 1ª mede, a 2ª aplica linear) — passada
+     única "bombeia" quando a trilha sobe nas pausas. Teto do loudnorm TP=−1,5 + um
+     alimiter final sem ganho (−1,5 dBFS): o AAC devolve ~0,3 dB de pico, e com TP=−1
+     a entrega saía a −0,9 dBTP (CLA200, 2026-11). No fim mede o arquivo e imprime LUFS/TP.
+     Depois rode helpers/qa_mix.py (nível de cada SFX contra a voz etc.).
 
 Uso:
     uv run python helpers/deliver_mix.py <edit_dir> [--voice-chain noisy|clean|room|none|"<filtros>"]
     uv run python helpers/deliver_mix.py <edit_dir> --stems    # grava voz/trilha/sfx separados para conferir
+    uv run python helpers/deliver_mix.py <edit_dir> --stems-only [--stems-dir D]  # só os stems, sem final (qa_mix)
 Lê remotion/out/render.mp4 (rode render_phase2.py antes) e grava <edit_dir>/final.mp4.
 """
 from __future__ import annotations
@@ -50,6 +54,9 @@ import numpy as np
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+TP_T = -1.5          # teto de pico do loudnorm (a entrega precisa ficar ≤ -1,0 dBTP depois do AAC)
+LIM_LIN = 0.841      # = -1,5 dBFS, limiter final sem ganho
 
 CHAINS = {
     "noisy": ("afftdn=nr=20:nf=-34:tn=1,highpass=f=110,highpass=f=110,"
@@ -117,6 +124,9 @@ def main() -> None:
     ap.add_argument("edit", type=Path)
     ap.add_argument("--voice-chain", default=None, help="noisy | clean | room | none | cadeia ffmpeg sem espaços")
     ap.add_argument("--stems", action="store_true")
+    ap.add_argument("--stems-only", action="store_true",
+                    help="só grava os stems (voz/trilha/sfx) e sai — não gera final (usado pelo qa_mix.py)")
+    ap.add_argument("--stems-dir", type=Path, default=None, help="onde gravar os stems (padrão <edit>/stems)")
     ap.add_argument("--tone-ref", type=Path, default=None,
                     help="vídeo de referência do tom (ex.: a base que entrou no HyperFrames): mede o desvio de "
                          "luminância do --picture contra ela e devolve o tom com a curva inversa (só Y)")
@@ -276,16 +286,34 @@ def main() -> None:
 
     fc.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:normalize=0,atrim=0:{vd:.3f}[pre]")
 
+    def write_stems() -> None:
+        stems = a.stems_dir or (edit / "stems"); stems.mkdir(parents=True, exist_ok=True)
+        for lab in ("voz", "mus", "sfx"):
+            if f"[{lab}]" not in mix:
+                continue
+            # fc[0] é a cadeia de vídeo e fc[-1] a soma final — fora dos stems.
+            g = ";".join(fc[1:-1]) + f";{lab_keep(mix, lab)}"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", g, "-map", f"[{lab}o]",
+                            "-t", f"{vd:.3f}", str(stems / f"{lab}.wav")], capture_output=True)
+        print(f"stems: {stems}")
+
+    if a.stems_only:
+        write_stems()
+        return
+
     # ---- passada 1: medir
     m = subprocess.run(["ffmpeg", "-v", "info", "-y", *inputs, "-filter_complex",
-                        ";".join(fc[1:]) + ";[pre]loudnorm=I=-14:TP=-1:LRA=11:print_format=json[o]",
+                        ";".join(fc[1:]) + f";[pre]loudnorm=I=-14:TP={TP_T}:LRA=11:print_format=json[o]",
                         "-map", "[o]", "-f", "null", "-"], capture_output=True, text=True)
     js = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", m.stderr, re.S)
     if not js:
         sys.exit("loudnorm passada 1 falhou:\n" + m.stderr[-2500:])
     me = json.loads(js.group(0))
-    ln = (f"loudnorm=I=-14:TP=-1:LRA=11:measured_I={me['input_i']}:measured_TP={me['input_tp']}:"
-          f"measured_LRA={me['input_lra']}:measured_thresh={me['input_thresh']}:offset={me['target_offset']}:linear=true")
+    ln = (f"loudnorm=I=-14:TP={TP_T}:LRA=11:measured_I={me['input_i']}:measured_TP={me['input_tp']}:"
+          f"measured_LRA={me['input_lra']}:measured_thresh={me['input_thresh']}:offset={me['target_offset']}:linear=true,"
+          # loudnorm sai a 192 kHz; volta a 48k e segura o resíduo com um limiter SEM ganho
+          # (o pico real do mp4 ainda sobe ~0,3 dB no AAC — por isso o teto é -1,5, não -1,0)
+          f"aresample=48000,alimiter=limit={LIM_LIN}:level=disabled:attack=3:release=40")
 
     from deliveries import next_path, publish  # sys.path já inclui helpers/ (sfx_peak)
     out = next_path(edit)  # final_vNN.mp4 — nunca sobrescreve uma entrega (F6.2)
@@ -301,16 +329,14 @@ def main() -> None:
     publish(edit, out, by="deliver_mix")
 
     if a.stems:
-        stems = edit / "stems"; stems.mkdir(exist_ok=True)
-        for lab in ("voz", "mus", "sfx"):
-            if f"[{lab}]" not in mix:
-                continue
-            # fc[0] é a cadeia de vídeo e fc[-1] a soma final — fora dos stems.
-            g = ";".join(fc[1:-1]) + f";{lab_keep(mix, lab)}"
-            subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", g, "-map", f"[{lab}o]",
-                            "-t", f"{vd:.3f}", str(stems / f"{lab}.wav")], capture_output=True)
+        write_stems()
     print(f"final: {out} ({vd:.2f}s · voz '{chain_key}' · trilha {'sim' if st.get('enabled') else 'não'} · "
           f"{len(cues)} sfx · entrada {me['input_i']} LUFS → -14)")
+    from qa_mix import measure
+    li, tp = measure(out)
+    ok = tp <= -1.0 and abs(li + 14) <= 1.0
+    print(f"  medido no arquivo: {li:.1f} LUFS · pico real {tp:.1f} dBTP "
+          f"{'OK (alvo -14 ±1 LUFS, ≤ -1,0 dBTP)' if ok else '⚠ FORA DO ALVO — rode helpers/qa_mix.py <edit> --fix'}")
 
 
 def lab_keep(mix: list[str], lab: str) -> str:
