@@ -67,8 +67,54 @@ import tempfile
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from speech_level import (analisar, filtro_de_ganho, limiar_de_silencio, medir,  # noqa: E402
+                          niveis_por_janela)
 
 WHISPERX_MODEL = "large-v3"
+ENGINES = ("whisperx", "parakeet")
+SR = 16000
+
+
+def _span_whisperx(model, align_pair, device, audio, language):
+    """Closure that re-transcribes audio[a:b] -> absolute-time words (second listen)."""
+    import whisperx
+
+    def span(a: float, b: float) -> list[dict]:
+        chunk = audio[int(a * SR): int(b * SR)]
+        # Straight to the faster-whisper model, NOT model.transcribe(): that path
+        # runs the VAD first, and the VAD is exactly what threw this stretch away
+        # (measured on CLA200: "No active speech found" on the same audio, 0 words
+        # recovered). Segments that Whisper itself calls non-speech are dropped.
+        segs = []
+        raw_segs, _ = model.model.transcribe(chunk, language=language or None, beam_size=5,
+                                             condition_on_previous_text=False, vad_filter=False)
+        for sg in raw_segs:
+            if sg.no_speech_prob > 0.6 and sg.avg_logprob < -1.0:
+                continue
+            if sg.text.strip():
+                segs.append({"text": sg.text.strip(), "start": sg.start, "end": sg.end})
+        res = {"segments": segs}
+        if align_pair is not None and segs:
+            am, meta = align_pair
+            res = whisperx.align(res["segments"], am, meta, chunk, device,
+                                 return_char_alignments=False)
+        out = []
+        for seg in res.get("segments", []):
+            for w in seg.get("words") or []:
+                txt = (w.get("word") or "").strip()
+                if txt and w.get("start") is not None and w.get("end") is not None:
+                    out.append({"word": txt, "start": a + float(w["start"]), "end": a + float(w["end"])})
+            if align_pair is None and not seg.get("words"):
+                out.append({"word": seg["text"], "start": a + seg["start"], "end": a + seg["end"]})
+        return out
+    return span
+
+
+def _second_listen_pass(words, audio, span, verbose):
+    from second_listen import segunda_escuta
+    limiar = limiar_de_silencio(medir(niveis_por_janela(audio, SR)), 0.0)
+    return segunda_escuta(words, audio, SR, limiar, span, verbose)
 
 
 def _whisperx_device() -> tuple[str, str]:
@@ -146,6 +192,7 @@ def call_whisperx(
     model_name: str = WHISPERX_MODEL,
     verbose: bool = False,
     glossary: list[str] | None = None,
+    second_listen: bool = True,
 ) -> dict:
     """Transcribe locally with WhisperX. Returns {words, text, language, _aligned}
     where words are raw {word, start, end} — _to_scribe_words shapes them.
@@ -238,8 +285,16 @@ def call_whisperx(
                              if words[j]["start"] is not None), w["start"])
         w["start"], w["end"] = float(w["start"]), float(max(w["end"], w["start"]))
 
-    return {"words": words, "text": " ".join(text_parts).strip(),
-            "language": detected, "_aligned": aligned_ok}
+    stats = None
+    text = " ".join(text_parts).strip()
+    if second_listen and words:
+        span = _span_whisperx(model, (align_model, metadata) if aligned_ok else None,
+                              device, audio, detected)
+        words, stats = _second_listen_pass(words, audio, span, verbose)
+        if stats["words"]:
+            text = " ".join(w["word"] for w in words)
+    return {"words": words, "text": text,
+            "language": detected, "_aligned": aligned_ok, "_second_listen": stats}
 
 
 def call_whisperx_windowed(
@@ -250,6 +305,7 @@ def call_whisperx_windowed(
     overlap: float = 3.0,
     verbose: bool = False,
     glossary: list[str] | None = None,
+    second_listen: bool = True,
 ) -> dict:
     """Same output as call_whisperx, but transcribed in short overlapping windows.
 
@@ -313,17 +369,28 @@ def call_whisperx_windowed(
             print(f"    window {w0:6.1f}–{w1:6.1f}s  ({len(words)} words so far)", flush=True)
         t += step
     words.sort(key=lambda w: w["start"])
+    stats = None
+    if second_listen and words:
+        pair = next((v for v in align.values() if v is not None), None)
+        words, stats = _second_listen_pass(words, audio,
+                                           _span_whisperx(model, pair, device, audio, detected), verbose)
     return {"words": words, "text": " ".join(w["word"] for w in words),
-            "language": detected, "_aligned": all(v is not None for v in align.values())}
+            "language": detected, "_aligned": all(v is not None for v in align.values()),
+            "_second_listen": stats}
 
 
-def extract_audio(video_path: Path, dest: Path) -> None:
+def extract_audio(video_path: Path, dest: Path, gain_db: float = 0.0) -> None:
     """Extract mono 16kHz 64kbps MP3. Whisper is trained on 16kHz mono, so the
     lossy encode costs nothing in transcript quality and keeps the file small.
+
+    gain_db > 0 is the ANALYSIS gain (speech_level.py): only this extracted copy
+    is amplified, the video is never touched.
     """
+    af = filtro_de_ganho(gain_db)
     cmd = [
         "ffmpeg", "-y", "-i", str(video_path),
-        "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "64k",
+        "-vn", "-ac", "1", "-ar", "16000", *(["-af", af] if af else []),
+        "-c:a", "libmp3lame", "-b:a", "64k",
         str(dest),
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -365,13 +432,16 @@ def _to_scribe_words(raw_words: list[dict]) -> list[dict]:
                 "type": "spacing",
                 "speaker_id": "speaker_0",
             })
-        out.append({
+        entry = {
             "text": text,
             "start": s,
             "end": e,
             "type": "word",
             "speaker_id": "speaker_0",
-        })
+        }
+        if w.get("recovered"):
+            entry["recovered"] = True
+        out.append(entry)
         prev_end = e
     return out
 
@@ -386,6 +456,9 @@ def transcribe_one(
     window: float | None = None,
     force: bool = False,
     glossary: list[str] | None = None,
+    engine: str = "whisperx",
+    second_listen: bool = True,
+    analysis_gain: bool = True,
 ) -> Path:
     """Transcribe a single video. Returns path to transcript JSON.
 
@@ -412,32 +485,65 @@ def transcribe_one(
         out_path.replace(bak / out_path.name)
 
     duration = _probe_duration(video)
+    if engine not in ENGINES:
+        raise ValueError(f"unknown engine {engine!r} (use one of {ENGINES})")
+    label = model if engine == "whisperx" else "parakeet-tdt-0.6b-v3"
     if verbose:
         print(f"  extracting audio from {video.name} "
-              f"({duration / 60.0:.1f} min → WhisperX {model}, forced alignment)", flush=True)
+              f"({duration / 60.0:.1f} min → {engine} {label})", flush=True)
+
+    # Adaptive analysis level (speech_level.py): a very quiet recording is
+    # amplified for the model only; a normal one is left alone.
+    lvl = analisar(video)
+    gain = lvl["ganho_db"] if analysis_gain else 0.0
+    if verbose and lvl["medida"]:
+        m = lvl["medida"]
+        print(f"  speech level p90 {m['fala_db']:.1f} dB, floor {m['piso_db']:.1f} dB → "
+              + (f"analysis gain +{gain:.1f} dB (video untouched)" if gain else ("analysis gain disabled (--no-analysis-gain)" if not analysis_gain else "no analysis gain needed")),
+              flush=True)
 
     t0 = time.time()
-    with tempfile.TemporaryDirectory() as tmp:
-        audio = Path(tmp) / f"{video.stem}.mp3"
-        extract_audio(video, audio)
-        if verbose:
-            size_mb = audio.stat().st_size / (1024 * 1024)
-            print(f"  transcribing {video.stem}.mp3 ({size_mb:.1f} MB)", flush=True)
-        if window:
-            raw = call_whisperx_windowed(audio, language=language, model_name=model,
-                                         window=window, verbose=verbose, glossary=glossary)
-        else:
-            raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose,
-                                glossary=glossary)
+    if engine == "parakeet":
+        from parakeet_engine import call_parakeet
+        from speech_level import amplificar, ler_onda
+        onda = amplificar(ler_onda(video), gain)
+        raw = call_parakeet(onda, limiar_de_silencio(lvl["medida"], gain),
+                            verbose=verbose, second_listen=second_listen)
+        if language:
+            raw["language"] = language
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / f"{video.stem}.mp3"
+            extract_audio(video, audio, gain)
+            if verbose:
+                size_mb = audio.stat().st_size / (1024 * 1024)
+                print(f"  transcribing {video.stem}.mp3 ({size_mb:.1f} MB)", flush=True)
+            if window:
+                raw = call_whisperx_windowed(audio, language=language, model_name=model,
+                                             window=window, verbose=verbose, glossary=glossary,
+                                             second_listen=second_listen)
+            else:
+                raw = call_whisperx(audio, language=language, model_name=model, verbose=verbose,
+                                    glossary=glossary, second_listen=second_listen)
 
-    tag = f"whisperx/{model}" + (f"/window{window:g}" if window else "") + \
-        ("/glossary" if glossary else "") + ("" if raw.get("_aligned", True) else "/UNALIGNED")
+    sl = raw.get("_second_listen")
+    if verbose and sl:
+        print(f"  second listen: {sl['gaps']} voiced gap(s) re-transcribed, "
+              f"{sl['words']} word(s) recovered", flush=True)
+    tag = (f"whisperx/{model}" if engine == "whisperx" else "parakeet/tdt-0.6b-v3-int8") + \
+        (f"/window{window:g}" if window and engine == "whisperx" else "") + \
+        ("/glossary" if glossary and engine == "whisperx" else "") + \
+        (f"/gain{gain:+.0f}dB" if gain else "") + \
+        ("/second-listen" if second_listen else "") + \
+        ("" if raw.get("_aligned", True) else "/UNALIGNED")
     payload = {
         "language_code": raw.get("language", ""),
         "language": raw.get("language", ""),
         "text": raw.get("text", ""),
         "words": _to_scribe_words(raw.get("words", [])),
         "_transcription_backend": tag,
+        "_analysis_gain_db": gain,
+        "_second_listen": sl,
     }
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     dt = time.time() - t0
@@ -492,6 +598,13 @@ def main() -> None:
                     help="Text file, one term per line (brands, models, names). Passed as a "
                          "neutral list prompt. Diff the result against a run without it: "
                          "context can make Whisper invent phrases.")
+    ap.add_argument("--engine", choices=ENGINES, default="whisperx",
+                    help="whisperx (default) or parakeet (optional: uv sync --extra parakeet "
+                         "+ local int8 model, see references/transcription.md)")
+    ap.add_argument("--no-second-listen", action="store_true",
+                    help="Skip the second pass that re-transcribes voiced stretches with no words.")
+    ap.add_argument("--no-analysis-gain", action="store_true",
+                    help="Never amplify the analysis audio (for A/B tests of the adaptive gain).")
     args = ap.parse_args()
 
     video = args.video.resolve()
@@ -511,6 +624,9 @@ def main() -> None:
         window=args.window,
         force=args.force,
         glossary=glossary,
+        engine=args.engine,
+        second_listen=not args.no_second_listen,
+        analysis_gain=not args.no_analysis_gain,
     )
 
 

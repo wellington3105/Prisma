@@ -32,7 +32,7 @@ import sys
 import time
 from pathlib import Path
 
-from transcribe import WHISPERX_MODEL, transcribe_one
+from transcribe import ENGINES, WHISPERX_MODEL, transcribe_one
 
 
 VIDEO_EXTS = {".mp4", ".MP4", ".mov", ".MOV", ".mkv", ".MKV", ".avi", ".AVI", ".m4v"}
@@ -49,6 +49,8 @@ def find_videos(videos_dir: Path) -> list[Path]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Batch transcription of a videos directory")
     ap.add_argument("videos_dir", type=Path, help="Directory containing source videos")
+    ap.add_argument("--engine", choices=ENGINES, default="whisperx", help="transcription engine (default whisperx)")
+    ap.add_argument("--no-second-listen", action="store_true", help="skip the second pass over voiced gaps")
     ap.add_argument(
         "--edit-dir",
         type=Path,
@@ -109,6 +111,8 @@ def main() -> None:
                 num_speakers=args.num_speakers,
                 model=args.model,
                 verbose=False,
+                engine=args.engine,
+                second_listen=not args.no_second_listen,
             )
             print(f"  + {v.stem}  →  {out.name}")
         except Exception as e:

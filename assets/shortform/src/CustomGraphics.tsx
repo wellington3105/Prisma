@@ -111,6 +111,7 @@ export const CustomGraphics: React.FC = () => {
       {flashes.length ? <CutSfx items={flashes} /> : null}
       {flashes.length ? <CutFlashes items={flashes} /> : null}
       {d.seriesBadge ? <SeriesBadgeView {...d.seriesBadge} /> : null}
+      {/* cenas sob medida: src/scenes/<Nome>.tsx + src/kit (references/scenes.md) */}
     </>
   );
 };

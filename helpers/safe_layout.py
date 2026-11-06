@@ -101,10 +101,24 @@ def detect_faces(video: Path, target_fps: float = 5.0, log=print) -> dict:
             yn = cv2.FaceDetectorYN.create(str(YUNET), "", (DW, DH), 0.6)
         except Exception as e:  # pragma: no cover
             log(f"  YuNet indisponível ({e}) — Haar")
-    hd = cv2.data.haarcascades
-    front = [cv2.CascadeClassifier(hd + "haarcascade_frontalface_default.xml"),
-             cv2.CascadeClassifier(hd + "haarcascade_frontalface_alt2.xml")]
-    prof = cv2.CascadeClassifier(hd + "haarcascade_profileface.xml")
+    # Haar is optional: OpenCV 5 builds may ship without CascadeClassifier /
+    # cv2.data (seen 2026-11-06 when three opencv wheels shared the venv). With
+    # YuNet present the helper still works; with neither, stop with the fix.
+    front, prof = [], None
+    try:
+        hd = cv2.data.haarcascades
+        front = [cv2.CascadeClassifier(hd + "haarcascade_frontalface_default.xml"),
+                 cv2.CascadeClassifier(hd + "haarcascade_frontalface_alt2.xml")]
+        prof = cv2.CascadeClassifier(hd + "haarcascade_profileface.xml")
+        if any(c.empty() for c in front) or prof.empty():
+            front, prof = [], None
+    except AttributeError:
+        front, prof = [], None
+    if not front and yn is None:
+        raise SystemExit("nenhum detector de rosto disponível: este OpenCV não tem Haar e o YuNet "
+                         "não está baixado — rode `safe_layout.py --fetch-model` (YuNet, MIT, ~227 KB)")
+    if not front:
+        log("  Haar indisponível neste OpenCV — só YuNet")
 
     def grow(x, y, w, h):
         # ghost-editor's growth: hair above, chin below, ears at the sides
@@ -132,7 +146,7 @@ def detect_faces(video: Path, target_fps: float = 5.0, log=print) -> dict:
                     b = max(fs, key=lambda r: r[2] * r[3])
                     x, y, w, h = b[:4]
                     box, how = grow(x, y, w, h), "yunet"
-            if box is None:
+            if box is None and front:
                 g = cv2.equalizeHist(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
                 r = ()
                 for c in front:

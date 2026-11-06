@@ -53,6 +53,11 @@ diarize = ["torch", "pyannote.audio"]
 # face_track.py already uses, which misses profile faces and jitters. ~200MB of
 # wheels, so it's opt-in: `uv sync --extra reframe`.
 reframe = ["mediapipe"]
+# Optional transcription engine (transcribe.py --engine parakeet): NVIDIA Parakeet
+# TDT 0.6B v3 (CC-BY-4.0) run through sherpa-onnx (Apache-2.0), CPU, no torch.
+# Opt-in with `uv sync --extra parakeet`; the default WhisperX install is
+# untouched. The int8 ONNX model is separate — see references/transcription.md.
+parakeet = ["sherpa-onnx"]
 
 # The one-command installer: `uvx --from git+<repo> prisma-install`, or plain
 # `uvx prisma-install` once this is on PyPI. Stdlib-only, so it runs before any

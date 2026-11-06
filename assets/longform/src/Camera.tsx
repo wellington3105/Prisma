@@ -31,15 +31,19 @@ export type CameraSpec = {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const cam = (editData as {camera?: CameraSpec}).camera;
 
-export const DynamicVideo: React.FC<{src?: string}> = ({src = 'cut.mp4'}) => {
-  const frame = useCurrentFrame();
+// `frameOffset` e `transparent` (paridade com o shortform): uma camada com janela
+// própria (o recorte da pessoa dentro de um <Sequence>) usa o frame GLOBAL para a
+// conta da câmera e fica alinhada com a base; `transparent` liga o alpha do
+// ProRes 4444 / WebM do recorte.
+export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean}> = ({src = 'cut.mp4', frameOffset = 0, transparent = false}) => {
+  const frame = useCurrentFrame() + frameOffset;
   const {width, height, fps} = useVideoConfig();
 
   let S = 1;
   let tx = 0;
   let ty = 0;
   if (cam?.enabled) {
-    const segs = (segData as {segments: {start: number; dur: number}[]}).segments ?? [];
+    const segs = (segData as unknown as {segments: {start: number; dur: number}[]}).segments ?? [];
     const zooms = cam.zooms?.length ? cam.zooms : [1.08];
     let idx = 0;
     // -1: OffthreadVideo draws the source frame at or before frame/fps, which on
@@ -54,7 +58,7 @@ export const DynamicVideo: React.FC<{src?: string}> = ({src = 'cut.mp4'}) => {
     const push = (cam.pushIn ?? 0) * clamp((frame - segFrom) / segLen, 0, 1);
     S = (zooms[idx % zooms.length] ?? 1) + push;
 
-    const pts = (track as {points: [number, number][]}).points;
+    const pts = (track as unknown as {points: [number, number][]}).points;
     const p = pts[Math.min(frame, pts.length - 1)] ?? [0.5, 0.4];
     // points are normalised 0..1 (face_track.py); tolerate pixel coords from an
     // old neutral track instead of flinging the frame to an edge
@@ -74,7 +78,7 @@ export const DynamicVideo: React.FC<{src?: string}> = ({src = 'cut.mp4'}) => {
           transform: `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${S.toFixed(4)})`,
         }}
       >
-        <OffthreadVideo src={staticFile(src)} style={{width, height}} />
+        <OffthreadVideo src={staticFile(src)} transparent={transparent} style={{width, height}} />
       </div>
     </AbsoluteFill>
   );

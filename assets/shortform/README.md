@@ -8,7 +8,11 @@ write `public/edit-data.json` instead. The only editable code file is
 ## Scaffold (one command)
 
 ```bash
-cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
+uv run python helpers/scaffold_phase2.py <edit> --duration <s> --fps <fps> --track shortform
+# scaffold_phase2.py copies the template AND links <edit>/remotion/node_modules to the shared
+# runtime (~/.prisma/remotion-runtime, built once from assets/remotion-runtime) — no per-project
+# `npm install` (junction on Windows, symlink elsewhere; falls back to npm install if the runtime
+# is missing or broken). Manual copy still works: cp -R ... && npm install.
 ```
 
 Then copy `cut.mp4` into `public/` and generate the data files below.
@@ -157,3 +161,13 @@ is real extruded metal text (three.js) and needs `--gl=angle`. Fonts: Inter,
 IBM Plex Mono, JetBrains Mono (OFL); the chrome typeface is Inter Bold converted
 to three's JSON (`src/fonts/`, license in `OFL-Inter.txt`). Estilo-tab mapping:
 `references/shortform.md` "Estilo do card 3D".
+
+### Scenes kit (`src/kit/`, bespoke scenes only)
+
+For a hand-written scene (a word that appears exactly when it is said, a 3D object, something
+passing behind/in front of the person): write `src/scenes/<Name>.tsx` and mount it in
+`CustomGraphics.tsx` — the ONLY editable file; `Main.tsx` never changes. The kit
+(`import {...} from '../kit'`): `speech` (`whenSaid`, `endOfSaid`, `windowOf`, `progress` — time
+from `captions.json`, not seconds), `safe` (`safeArea`, `faceAt`, `freeSpot` — platform bands and
+`faces.json` from `safe_layout.py`), `tokens` (accent/font from edit-data, glass, glow), `three`
+(`Scene3D`, needs `--gl=angle`), `person` (`InFrontOfPerson`). Full guide: `references/scenes.md`.

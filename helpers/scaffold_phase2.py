@@ -19,8 +19,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -52,6 +55,78 @@ def _ler_lista(p: Path) -> list | None:
         return None
 
 
+# ---- runtime Remotion compartilhado ------------------------------------------
+# `npm install` por projeto custava ~4 min e centenas de MB. As dependências dos
+# dois templates são as mesmas (pinadas em assets/remotion-runtime/package.json),
+# então vivem UMA vez em ~/.prisma/remotion-runtime e cada <edit>/remotion/node_modules
+# é um atalho para lá (junction no Windows — não pede admin —, symlink no resto).
+RUNTIME = Path(os.environ.get("PRISMA_REMOTION_RUNTIME") or Path.home() / ".prisma" / "remotion-runtime")
+RUNTIME_SRC = SKILL / "assets" / "remotion-runtime"
+
+
+def _runtime_ok(rt: Path = RUNTIME) -> bool:
+    nm = rt / "node_modules"
+    need = ("remotion/package.json", "@remotion/cli/package.json", "react/package.json", "three/package.json",
+            "@react-three/fiber/package.json", "@remotion/three/package.json", "typescript/package.json")
+    return all((nm / n).is_file() for n in need)
+
+
+def _is_link(p: Path) -> bool:
+    if p.is_symlink():
+        return True
+    try:
+        return bool(os.path.isjunction(p))  # Python 3.12+
+    except AttributeError:
+        return os.name == "nt" and p.is_dir() and bool(os.stat(p, follow_symlinks=False).st_file_attributes & 0x400)
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OSError(r.stderr.strip() or r.stdout.strip())
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def build_runtime(log=print) -> bool:
+    """Instala o runtime uma vez, do lockfile dos templates (`npm ci`)."""
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm:
+        return False
+    RUNTIME.mkdir(parents=True, exist_ok=True)
+    for f in ("package.json", "package-lock.json"):
+        shutil.copy2(RUNTIME_SRC / f, RUNTIME / f)
+    log(f"  runtime Remotion ausente/quebrado — instalando UMA vez em {RUNTIME} (npm ci)…")
+    t = time.time()
+    r = subprocess.run([npm, "ci", "--prefer-offline", "--no-audit", "--no-fund"], cwd=str(RUNTIME))
+    log(f"  npm ci: {time.time() - t:.0f}s, código {r.returncode}")
+    return r.returncode == 0 and _runtime_ok()
+
+
+def ensure_node_modules(rem: Path) -> str:
+    """`<rem>/node_modules` -> runtime compartilhado; senão `npm install` no projeto."""
+    nm = rem / "node_modules"
+    if nm.exists() and not (_is_link(nm) and not nm.resolve().exists()):
+        return "node_modules já presente (mantido)"
+    if _is_link(nm):  # atalho morto
+        os.rmdir(nm) if os.name == "nt" else nm.unlink()
+    if not _runtime_ok() and not build_runtime():
+        npm = shutil.which("npm") or shutil.which("npm.cmd")
+        if not npm:
+            return "SEM runtime e SEM npm — instale o Node"
+        t = time.time()
+        r = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(rem))
+        return f"npm install no projeto ({time.time() - t:.0f}s, código {r.returncode}) — runtime compartilhado indisponível"
+    try:
+        _link_dir(nm, RUNTIME / "node_modules")
+    except OSError as e:
+        npm = shutil.which("npm") or shutil.which("npm.cmd")
+        r = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=str(rem))
+        return f"link falhou ({e}); npm install no projeto, código {r.returncode}"
+    return f"node_modules -> {RUNTIME / 'node_modules'}"
+
+
 def scaffold(edit: Path, dur: float, fps: int, width: int, height: int,
              track: str = "shortform", segments: list | None = None) -> list[str]:
     rem = edit / "remotion"
@@ -60,6 +135,7 @@ def scaffold(edit: Path, dur: float, fps: int, width: int, height: int,
 
     if not (rem / "src").exists():
         src = SKILL / "assets" / track
+        rem.mkdir(parents=True, exist_ok=True)
         for item in src.iterdir():
             if item.name in ("node_modules", "out", "build"):
                 continue
@@ -69,6 +145,7 @@ def scaffold(edit: Path, dur: float, fps: int, width: int, height: int,
             else:
                 shutil.copy2(item, dst)
         feito.append(f"template {track} copiado")
+    feito.append(ensure_node_modules(rem))
     pub.mkdir(parents=True, exist_ok=True)
 
     n = max(1, round(dur * fps))

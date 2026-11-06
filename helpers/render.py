@@ -132,6 +132,38 @@ TONEMAP_CHAIN = (
 )
 
 
+def has_zscale() -> bool:
+    """True when this ffmpeg build ships the zscale filter (libzimg)."""
+    global _ZSCALE
+    if _ZSCALE is None:
+        try:
+            out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+                                 capture_output=True, text=True).stdout
+            _ZSCALE = any(len(l.split()) > 1 and l.split()[1] == "zscale" for l in out.splitlines())
+        except OSError:
+            _ZSCALE = False
+    return _ZSCALE
+
+
+_ZSCALE: bool | None = None
+
+
+def tonemap_chain(transfer: str = "arib-std-b67") -> str:
+    """HDR -> Rec.709 filter chain. zscale+tonemap when ffmpeg has zscale (the
+    default); otherwise a generated 3D LUT (hdr_lut.py) applied with lut3d.
+    PRISMA_FORCE_LUT_TONEMAP=1 forces the LUT path (to test the fallback)."""
+    if has_zscale() and not os.environ.get("PRISMA_FORCE_LUT_TONEMAP"):
+        return TONEMAP_CHAIN
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from hdr_lut import cubo
+    cube = cubo(transfer).as_posix().replace(":", r"\:")
+    return (
+        "scale=in_color_matrix=bt2020nc:out_range=pc,format=gbrp10le,"
+        f"lut3d=file='{cube}':interp=tetrahedral,"
+        "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p"
+    )
+
+
 def _color_tags(video: Path) -> dict[str, str]:
     """Read the source's color tags (empty strings when absent/unknown)."""
     try:
@@ -327,7 +359,7 @@ def extract_segment(
 
     vf_parts: list[str] = []
     if is_hdr_source(source):
-        vf_parts.append(TONEMAP_CHAIN)
+        vf_parts.append(tonemap_chain(_color_tags(source).get("color_transfer", "")))
     else:
         wide = wide_gamut_chain(source)
         if wide:

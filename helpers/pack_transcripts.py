@@ -11,6 +11,13 @@ Output: <edit>/takes_packed.md
 Usage:
     python helpers/pack_transcripts.py --edit-dir <edit_dir>
     python helpers/pack_transcripts.py --edit-dir <edit_dir> --silence-threshold 0.5
+    python helpers/pack_transcripts.py --edit-dir <edit_dir> --raw   # ignore the transcript review
+
+Phrase line:  [start-end] S0 #n text   -- `#n` numbers the phrases of each
+transcript from 1, counted on the raw words, so it is stable across reviews.
+revise_transcript.py reads revisao.json against these numbers; when a revised
+copy exists it is packed instead (corrected phrases get `*`, dropped ones
+`[DROP: why]`).
 """
 
 from __future__ import annotations
@@ -30,6 +37,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+from revise_transcript import resolve_transcript
 
 
 def format_time(seconds: float) -> str:
@@ -59,11 +68,12 @@ def group_into_phrases(
     """
     phrases: list[dict] = []
     current_words: list[dict] = []
+    current_idx: list[int] = []
     current_start: float | None = None
     current_speaker: str | None = None
 
     def flush() -> None:
-        nonlocal current_words, current_start, current_speaker
+        nonlocal current_words, current_idx, current_start, current_speaker
         if not current_words:
             return
         text_parts: list[str] = []
@@ -78,6 +88,7 @@ def group_into_phrases(
             text_parts.append(raw)
         if not text_parts:
             current_words = []
+            current_idx = []
             current_start = None
             current_speaker = None
             return
@@ -89,14 +100,18 @@ def group_into_phrases(
             "end": end_time,
             "text": text,
             "speaker_id": current_speaker,
+            # positions of this phrase's words in the transcript's `words` list
+            # (revise_transcript.py addresses phrases by their number + these)
+            "word_idx": list(current_idx),
         })
         current_words = []
+        current_idx = []
         current_start = None
         current_speaker = None
 
     prev_end: float | None = None
 
-    for w in words:
+    for k, w in enumerate(words):
         t = w.get("type", "word")
         if t == "spacing":
             # spacing entries mark the gaps between words; if the gap is long,
@@ -127,17 +142,26 @@ def group_into_phrases(
             current_start = start
             current_speaker = speaker
         current_words.append(w)
+        current_idx.append(k)
         prev_end = w.get("end", start)
 
     flush()
     return phrases
 
 
-def pack_one_file(json_path: Path, silence_threshold: float) -> tuple[str, float, list[dict]]:
-    """Return (header_name, duration, phrases) for one transcript file."""
-    data = json.loads(json_path.read_text(encoding="utf-8"))
+def pack_one_file(json_path: Path, silence_threshold: float,
+                  use_revised: bool = True) -> tuple[str, float, list[dict]]:
+    """Return (header_name, duration, phrases) for one transcript file. Reads
+    the revised copy (revise_transcript.py) when there is one; the header
+    carries the raw stem either way."""
+    src = resolve_transcript(json_path, use_revised)
+    data = json.loads(src.read_text(encoding="utf-8"))
     words = data.get("words", [])
     phrases = group_into_phrases(words, silence_threshold)
+    for k, p in enumerate(phrases, 1):          # stable numbering: revisao.json refers to these
+        p["n"] = k
+        p["drop"] = [words[i].get("drop_why", "") for i in p["word_idx"] if words[i].get("drop")]
+        p["revised"] = any(words[i].get("revised") for i in p["word_idx"])
     if phrases:
         duration = phrases[-1]["end"] - phrases[0]["start"]
     else:
@@ -150,7 +174,10 @@ def render_markdown(entries: list[tuple[str, float, list[dict]]], silence_thresh
     lines.append("# Packed transcripts")
     lines.append("")
     lines.append(f"Phrase-level, grouped on silences ≥ {silence_threshold:.1f}s or speaker change.")
-    lines.append("Use `[start-end]` ranges to address cuts in the EDL.")
+    lines.append("Use `[start-end]` ranges to address cuts in the EDL. `#n` is the phrase number "
+                 "(stable; the transcript review in `revisao.json` refers to it).")
+    if any(p.get("revised") for _, _, ps in entries for p in ps):
+        lines.append("`*` = text corrected by the transcript review (revise_transcript.py).")
     lines.append("")
     for name, duration, phrases in entries:
         lines.append(f"## {name}  (duration: {format_duration(duration)}, {len(phrases)} phrases)")
@@ -168,7 +195,13 @@ def render_markdown(entries: list[tuple[str, float, list[dict]]], silence_thresh
                 spk_tag = f" S{spk_str}"
             else:
                 spk_tag = ""
-            lines.append(f"  [{format_time(p['start'])}-{format_time(p['end'])}]{spk_tag} {p['text']}")
+            mark = " *" if p.get("revised") else ""
+            drop = ""
+            if p.get("drop"):
+                why = next((w for w in p["drop"] if w), "")
+                drop = f"  [DROP{': ' + why if why else ''}]"
+            lines.append(f"  [{format_time(p['start'])}-{format_time(p['end'])}]{spk_tag} "
+                         f"#{p['n']}{mark} {p['text']}{drop}")
         lines.append("")
     return "\n".join(lines)
 
@@ -188,6 +221,8 @@ def main() -> None:
         default=None,
         help="Output path (default: <edit-dir>/takes_packed.md)",
     )
+    ap.add_argument("--raw", action="store_true",
+                    help="ignore revised transcripts (transcripts/.revised/) and pack the raw text")
     args = ap.parse_args()
 
     edit_dir = args.edit_dir.resolve()
@@ -203,7 +238,7 @@ def main() -> None:
     if not json_files:
         sys.exit(f"no .json files in {transcripts_dir}")
 
-    entries = [pack_one_file(p, args.silence_threshold) for p in json_files]
+    entries = [pack_one_file(p, args.silence_threshold, not args.raw) for p in json_files]
     markdown = render_markdown(entries, args.silence_threshold)
 
     out_path = args.output or (edit_dir / "takes_packed.md")

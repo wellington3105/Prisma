@@ -41,6 +41,7 @@ import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {HookIntro, type HookSpec} from './Hook';
 import {SplitScreen, type SplitInsert} from './Split';
+import {CustomGraphics} from './CustomGraphics';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
@@ -60,6 +61,14 @@ type Broll = {
    *  the cutaway. `true` = top-right, ~26% of the width. Ratios of the frame. */
   pip?: boolean | {x?: number; y?: number; w?: number; zoom?: number; focusX?: number; focusY?: number};
 };
+// ---- behind-the-subject (16:9): elemento entre o vídeo-base e o recorte da pessoa ----
+// `matte` = ProRes 4444 com alpha de helpers/person_matte.py, UM arquivo por janela
+// (o frame 0 do arquivo = `start`). x/y (0..1) posicionam o elemento; default no
+// terço livre ao lado do falante.
+type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number; x?: number; y?: number};
+type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number; x?: number; y?: number};
+type Behind = BehindImage | BehindWords;
+
 type Lower = {name: string; title?: string; start: number; dur: number};
 type Chapter = {title: string; start: number; dur?: number};
 type Callout = {text: string; start: number; dur: number; x?: number; y?: number};
@@ -86,6 +95,8 @@ export type EditData = {
   // Headline (Hook.tsx) and split screen (Split.tsx) — same keys as shortform
   hook?: HookSpec;
   splitInserts?: SplitInsert[];
+  // Elementos ATRÁS do falante (paridade com o shortform): ver README (`behind`)
+  behind?: Behind[];
   // Palavras em vidro-prisma (GlassCard.tsx) — elements.glassPanel
   highlights?: HighlightBlock;
   glass?: GlassBlock;
@@ -291,6 +302,101 @@ const GlassLayer: React.FC<{spec: GlassBlock}> = ({spec}) => {
   );
 };
 
+// ============ BEHIND-THE-SUBJECT =============================================
+// Camadas: base (fundo + pessoa) -> ELEMENTO -> recorte da pessoa por cima (a pessoa
+// é redesenhada, então o elemento fica atrás dela). O recorte passa pela mesma
+// câmera da base (DynamicVideo com frameOffset) para ficar alinhado.
+const BehindImageEl: React.FC<{item: BehindImage; totalFrames: number}> = ({item, totalFrames}) => {
+  const f = useCurrentFrame();
+  const {width, height} = useVideoConfig();
+  const enter = interpolate(f, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+  const exit = interpolate(f, [totalFrames - 8, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const grow = interpolate(f, [0, totalFrames], [1, 1.08], {extrapolateRight: 'clamp'});
+  const w = width * 0.34;
+  const h = height * 0.62;
+  return (
+    <AbsoluteFill>
+      <Sfx src="whoosh.mp3" />
+      <div
+        style={{
+          position: 'absolute',
+          left: (item.x ?? 0.26) * width - w / 2,
+          top: (item.y ?? 0.5) * height - h / 2,
+          width: w,
+          height: h,
+          borderRadius: height * 0.028,
+          overflow: 'hidden',
+          opacity: Math.min(enter, exit),
+          scale: String(interpolate(enter, [0, 1], [0.94, 1]) * grow),
+          boxShadow: `0 ${height * 0.022}px ${height * 0.065}px rgba(0,0,0,0.55)`,
+        }}
+      >
+        <Img src={staticFile(item.src)} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const BehindWordsEl: React.FC<{item: BehindWords; totalFrames: number}> = ({item, totalFrames}) => {
+  const f = useCurrentFrame();
+  const {fps, width, height} = useVideoConfig();
+  const scrim = interpolate(f, [0, 8, totalFrames - 8, totalFrames], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const words = item.words;
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{background: 'rgba(0,0,0,0.26)', opacity: scrim}} />
+      {words.map((w, i) => {
+        const from = Math.round((w.at - item.start) * fps);
+        const to = i + 1 < words.length ? Math.round((words[i + 1].at - item.start) * fps) : totalFrames;
+        if (f < from || f >= to) return null;
+        const local = f - from;
+        const pop = interpolate(local, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.back(1.7))});
+        const op = interpolate(local, [0, 4], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: (item.x ?? 0.5) * width,
+              top: (item.y ?? 0.42) * height,
+              transform: 'translate(-50%,-50%)',
+              fontFamily,
+              fontWeight: 900,
+              fontSize: height * 0.3,
+              color: '#fff',
+              opacity: op,
+              scale: String(0.72 + 0.28 * pop),
+              letterSpacing: -height * 0.01,
+              whiteSpace: 'nowrap',
+              textShadow: '0 6px 30px rgba(0,0,0,0.5)',
+            }}
+          >
+            {w.t}
+          </div>
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
+
+const BehindSubject: React.FC<{items: Behind[]}> = ({items}) => {
+  const {fps} = useVideoConfig();
+  return (
+    <>
+      {items.map((b, i) => {
+        const from = Math.round(b.start * fps);
+        const duration = Math.round(b.dur * fps);
+        return (
+          <Sequence key={i} from={from} durationInFrames={duration} layout="none">
+            {b.kind === 'image' ? <BehindImageEl item={b} totalFrames={duration} /> : <BehindWordsEl item={b} totalFrames={duration} />}
+            <DynamicVideo src={b.matte} frameOffset={from} transparent />
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
+
 export const Main: React.FC = () => {
   const shaderCuts = ((editData as {transitions?: ShaderCut[]}).transitions ?? []).filter(
     (t): t is ShaderCut =>
@@ -308,6 +414,7 @@ export const Main: React.FC = () => {
     <AbsoluteFill style={{backgroundColor: 'black'}}>
       {D.soundtrack.enabled ? <Soundtrack /> : null}
       {D.camera?.enabled ? <DynamicVideo /> : <Base />}
+      {D.behind?.length ? <BehindSubject items={D.behind} /> : null}
       {Timed(D.broll, 4, (it, d) => <BrollEl item={it} totalFrames={d} />)}
       {D.splitInserts?.length ? <SplitScreen items={D.splitInserts} /> : null}
       {Timed(D.chapters, 2.4, (it, d) => <ChapterCard title={it.title} totalFrames={d} />)}
@@ -319,6 +426,8 @@ export const Main: React.FC = () => {
       <ShaderTransitions items={shaderCuts} energy={D.direction?.energy} />
       {cuts.length ? <CutSfx items={cuts} /> : null}
       {cuts.length ? <CutFlashes items={cuts} /> : null}
+      {/* cenas sob medida (references/scenes.md): o ÚNICO arquivo editável */}
+      <CustomGraphics />
       {D.hook?.enabled ? <HookIntro /> : null}
       {/* Legenda queimada: acima de b-roll/vidro/transições para ficar legível nos cutaways */}
       {D.captions?.enabled
