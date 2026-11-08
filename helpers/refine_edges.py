@@ -304,12 +304,19 @@ def refine(edl_path: Path, eng: Engine, dry: bool) -> None:
         mv = f"{old[0]:.2f}→{r['start']:.2f}  {old[1]:.2f}→{r['end']:.2f}"
         print(f"  [{n:02d}] {mv}  " + ("; ".join(flags) if flags else "ok"))
 
-    # funde vizinhos da mesma fonte que passaram a se tocar
+    # funde vizinhos da mesma fonte que passaram a se tocar OU a se SOBREPOR.
+    # Mover cada borda para o silêncio medido sem olhar o vizinho deixava pares
+    # sobrepostos (2 de 36 no CLA200, 2026-11-08) — e sobreposição no render é
+    # som duplicado. Só funde quando o trecho seguinte avança no tempo
+    # (p.start < r.start): um trecho que volta (take reaproveitado) fica.
     merged = [ranges[0]]
     for r in ranges[1:]:
         p = merged[-1]
-        if r["source"] == p["source"] and 0 <= r["start"] - p["end"] < 0.08:
-            p["end"] = r["end"]
+        if (r["source"] == p["source"] and p["start"] < r["start"]
+                and r["start"] - p["end"] < 0.08):
+            if r["start"] < p["end"]:
+                print(f"  sobreposição corrigida: {p['end']:.2f} > {r['start']:.2f} → fundidos")
+            p["end"] = max(p["end"], r["end"])
             p["quote"] = f"{p.get('quote', '')} {r.get('quote', '')}".strip()
             p["gain_db"] = round(((p.get("gain_db") or 0) + (r.get("gain_db") or 0)) / 2, 1)
             # o range fundido herda a trava do início de um e a do fim do outro

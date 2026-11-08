@@ -65,7 +65,7 @@ def _cut_size():
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                               "stream=width,height", "-of", "csv=p=0", str(EDIT / "cut.mp4")],
-                             capture_output=True, text=True, check=True).stdout.strip().split(",")
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip().split(",")
         w, h = int(out[0]), int(out[1])
     except Exception:
         return 1080, 1920
@@ -89,7 +89,7 @@ if not HF:
 
 
 def run(cmd, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kw)
     if r.returncode != 0:
         raise SystemExit(f"falhou: {' '.join(map(str, cmd))}\n{r.stdout[-800:]}{r.stderr[-800:]}")
     return r

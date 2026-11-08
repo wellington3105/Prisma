@@ -122,7 +122,7 @@ export type EditData = {
   };
   inserts: Insert[];
   behind: Behind[];
-  soundtrack: {enabled: boolean; file: string; volume: number};
+  soundtrack: {enabled: boolean; file: string; volume?: number};
   /** Optional refracting glass panel — gated by `elements.glassPanel`.
    *  Absent (the default) means the WebGL layer never mounts. */
   /** Direção de arte — energia do vídeo. Define duração e intensidade das
@@ -582,11 +582,13 @@ const Inserts: React.FC = () => {
 const Soundtrack: React.FC = () => {
   const {durationInFrames} = useVideoConfig();
   const S = D.soundtrack;
+  // volume ausente/NaN quebrava o interpolate ("outputRange must contain only numbers")
+  const vol = typeof S.volume === "number" && Number.isFinite(S.volume) ? S.volume : 0.2;
   return (
     <Audio
       src={staticFile(S.file)}
       volume={(f) =>
-        interpolate(f, [0, 10, durationInFrames - 24, durationInFrames], [0, S.volume, S.volume, 0], {
+        interpolate(f, [0, 10, durationInFrames - 24, durationInFrames], [0, vol, vol, 0], {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
         })

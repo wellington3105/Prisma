@@ -25,7 +25,7 @@ def installed() -> str | None:
     if not exe:
         return None
     try:
-        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=60).stdout
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60).stdout
     except Exception:
         return None
     m = re.search(r"\d+\.\d+\.\d+", out or "")

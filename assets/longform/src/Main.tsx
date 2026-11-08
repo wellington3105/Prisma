@@ -83,7 +83,7 @@ export type EditData = {
   lowerThirds: Lower[];
   chapters: Chapter[];
   callouts: Callout[];
-  soundtrack: {enabled: boolean; file: string; volume: number};
+  soundtrack: {enabled: boolean; file: string; volume?: number};
   // As camadas VFX, iguais às do shortform. Os componentes não sabem o aspecto
   // do vídeo — `rect` é 0..1 e o camera solve trabalha no espaço do mundo —
   // então o que muda no horizontal é o ENQUADRAMENTO, não o código.
@@ -249,10 +249,12 @@ const CalloutEl: React.FC<{item: Callout; totalFrames: number}> = ({item, totalF
 const Soundtrack: React.FC = () => {
   const {durationInFrames} = useVideoConfig();
   const S = D.soundtrack;
+  // volume ausente/NaN quebrava o interpolate ("outputRange must contain only numbers")
+  const vol = typeof S.volume === "number" && Number.isFinite(S.volume) ? S.volume : 0.2;
   return (
     <Audio
       src={staticFile(S.file)}
-      volume={(f) => interpolate(f, [0, 20, durationInFrames - 40, durationInFrames], [0, S.volume, S.volume, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}
+      volume={(f) => interpolate(f, [0, 20, durationInFrames - 40, durationInFrames], [0, vol, vol, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}
     />
   );
 };
