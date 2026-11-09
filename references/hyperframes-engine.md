@@ -147,3 +147,6 @@ card no Studio não refaz a curva de saída (o `total` é do edit-data).
 Tempo de render CLA200 (RTX 5070): Remotion 8 min 22 s · HyperFrames 8 min 02 s (montagem
 110 s na 1ª vez, quase toda a `base.mp4`; depois ~25 s). Entrega `deliver_mix --picture` +
 `qa_mix`: −14,0 LUFS, −1,4 dBTP, "mix OK".
+
+### Decisão 2026-11-09 — lag da voz no caminho Remotion
+Medido: o Remotion 4.0.482 não atrasa a imagem, então o `--video-lag 1` padrão do `deliver_mix` deixa a voz ~33 ms atrasada no caminho Remotion. O usuário decidiu **deixar como está** (abaixo do perceptível). O HyperFrames passa `--video-lag 0`. Não mudar o padrão sem nova decisão.
