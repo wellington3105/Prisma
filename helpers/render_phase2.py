@@ -5,9 +5,15 @@ an insert on the timeline changed edit-data.json and nothing else: the player
 kept showing the previous render and the edit looked like it had not been
 applied. A drawing that disagrees with the video is worse than no drawing.
 
-    uv run python helpers/render_phase2.py --edit <edit_dir>
+    uv run python helpers/render_phase2.py --edit <edit_dir> [--engine auto|hyperframes|remotion]
 
-Two steps, in order:
+Engine (references/hyperframes-engine.md): `auto` (default) renders on HyperFrames
+when every layer the edit-data turns on is ported (hfkit/layers LAYERS, parity
+green), else the WHOLE video on Remotion and says which keys caused it. The
+HyperFrames branch: build_hyperframes → `hyperframes check` → render (its audio is
+discarded) → deliver_mix --picture … --tone-ref … → qa_mix.
+
+Remotion branch — two steps, in order:
   1. `remotion render` → remotion/out/render.mp4  (the picture)
   2. ffmpeg delivery   → final.mp4               (picture + approved audio)
 
@@ -62,7 +68,7 @@ def check_media(ed: dict, pub: pathlib.Path) -> list[str]:
     (2026-11-03): ~4 min de render perdidos e um still por insert para achar o
     culpado. Aqui custa um ffprobe por arquivo, antes do encode."""
     srcs = ["cut.mp4"]
-    for key in ("inserts", "behind", "splitInserts"):
+    for key in ("inserts", "behind", "splitInserts", "broll"):
         for it in (ed.get(key) or []):
             for k in ("src", "matte", "fg"):
                 if isinstance(it.get(k), str):
@@ -365,9 +371,160 @@ def _norm_txt(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) != "Mn")
 
 
+# ============ ENGINE ==========================================================
+# Phase 2 renders on an ENGINE (plan "HyperFrames como motor principal", decisions
+# of 2026-11-08): HyperFrames when every layer the edit-data turns on is ported
+# (parity fixture green), otherwise the WHOLE video on Remotion — never a hybrid.
+# `auto` decides and says which keys sent it to Remotion.
+DEFAULT_ENGINE = "auto"
+
+
+def choose_engine(ed: dict, pub: pathlib.Path, edit: pathlib.Path, asked: str) -> tuple[str, list[str]]:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from hfkit.layers import unported
+    missing = unported(ed, pub, edit)
+    if asked == "remotion":
+        return "remotion", missing
+    if asked == "hyperframes":
+        if missing:
+            raise SystemExit("--engine hyperframes, mas há camadas não portadas: " + ", ".join(missing)
+                             + " — use --engine auto (o vídeo inteiro vai para o Remotion)")
+        return "hyperframes", []
+    return ("remotion" if missing else "hyperframes"), missing
+
+
+def _tone_reference(root: pathlib.Path, info: dict) -> tuple[pathlib.Path | None, str]:
+    """A still-per-tone-time video of base.mp4 WITH the camera applied at that frame.
+
+    deliver_mix --tone-ref regresses the render's luma on the reference's, pixel by
+    pixel; base.mp4 itself is unzoomed while the render is zoomed 1.08–1.14, and a
+    misaligned regression flattens the gain. Same frames, same framing."""
+    times, cams = info.get("toneTimes") or [], info.get("toneCam") or []
+    if not times or len(cams) != len(times):
+        return None, ""
+    W, H, fps = info["width"], info["height"], info["fps"]
+    work = root / "out" / "tone"
+    work.mkdir(parents=True, exist_ok=True)
+    lst = []
+    for i, (t, (tx, ty, S)) in enumerate(zip(times, cams)):
+        png = work / f"t{i}.png"
+        sw, sh = max(W, round(W * S)), max(H, round(H * S))
+        vf = f"scale={sw}:{sh}:flags=bicubic,crop={W}:{H}:{min(sw - W, max(0, round(-tx)))}:{min(sh - H, max(0, round(-ty)))}"
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.4f}", "-i", str(root / "assets" / "base.mp4"),
+             "-frames:v", "1", "-vf", vf, str(png)], label="tone still")
+        nxt = times[i + 1] if i + 1 < len(times) else t + 1.0
+        dur = (nxt - 0.5 / fps) - ((t - 0.5 / fps) if i else 0.0)
+        lst.append(f"file '{png.name}'\nduration {dur:.4f}\n")
+    lst.append(f"file 't{len(times) - 1}.png'\n")
+    (work / "list.txt").write_text("".join(lst), encoding="utf-8")
+    ref = root / "out" / "tone_ref.mp4"
+    run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(work / "list.txt"),
+         "-vf", f"fps={fps},format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "12",
+         "-color_range", "tv", str(ref)], cwd=str(work), label="tone reference")
+    return ref, ",".join(f"{t:.4f}" for t in times)
+
+
+def render_hyperframes(edit: pathlib.Path, ed: dict, args) -> pathlib.Path:
+    """Build (unless the Studio edited it) → check → render. Returns the picture."""
+    here = pathlib.Path(__file__).resolve().parent
+    sys.path.insert(0, str(here))
+    from hfkit.project import hf_cli, project_sig, HF_PIN
+    from hf_version import check as hf_check
+    from hf_pull_takes import changed_takes
+    root = edit / "hyperframes"
+    mark = root / ".prisma-export.json"
+    edited = False
+    if (root / "index.html").exists() and mark.exists():
+        m = json.loads(mark.read_text(encoding="utf-8"))
+        edited = m.get("builder") == "build_hyperframes" and m.get("index_sha1") != project_sig(root)
+    if edited and not args.rebuild:
+        print("[hf] projeto editado no Studio — renderizando a versão do Studio (--rebuild remonta do edit-data)", flush=True)
+    elif not args.no_rebuild or not (root / "index.html").exists():
+        cmd = [sys.executable, str(here / "build_hyperframes.py"), str(edit)] + (["--force"] if args.rebuild else [])
+        print("[1/3] build_hyperframes…", flush=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        print((r.stdout or "").strip(), flush=True)
+        if r.returncode != 0:
+            raise SystemExit(f"build_hyperframes falhou:\n{(r.stderr or r.stdout)[-2000:]}")
+    # takes edited in the Studio change the timing → the audio of cut.mp4 no longer fits
+    bad = changed_takes(root)
+    if bad:
+        raise SystemExit("takes editados no Studio sem voltar para a EDL (" + "; ".join(bad[:6]) + "). "
+                         "Rode helpers/hf_pull_takes.py <edit> e re-renderize o corte (decisão 1).")
+    warn = hf_check(root)
+    if warn:
+        print(warn, flush=True)
+    hf = hf_cli(json.loads((root / "package.json").read_text(encoding="utf-8")).get("prisma", {}).get("hyperframes") or HF_PIN)
+    info = json.loads((root / "render.json").read_text(encoding="utf-8"))
+    chk = subprocess.run(hf + ["check", "--json"], cwd=str(root), capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    try:
+        cj = json.loads(chk.stdout[chk.stdout.find("{"):])
+    except (ValueError, json.JSONDecodeError):
+        cj = {}
+    errs = [f for v in cj.values() if isinstance(v, dict) for f in (v.get("findings") or [])
+            if f.get("severity") == "error"]
+    if errs:
+        raise SystemExit("hyperframes check com erros:\n  " + "\n  ".join(
+            f"{e.get('code')}: {str(e.get('message'))[:200]}" for e in errs[:10]))
+    out = root / "out" / "render.mp4"
+    out.parent.mkdir(exist_ok=True)
+    cmd = hf + ["render", "--fps", str(info["fps"]), "--quality", "delivery", "-o", "out/render.mp4"]
+    if info.get("gl"):
+        cmd.append("--browser-gpu")   # replaces Remotion's --gl=angle (plan §1.3)
+    print("[2/3] hyperframes render…", flush=True)
+    run(cmd, cwd=str(root), label="hyperframes render")
+    return out
+
+
+def deliver_hyperframes(edit: pathlib.Path, picture: pathlib.Path) -> None:
+    """deliver_mix --picture (voice/trilha/SFX from the approved masters) + qa_mix."""
+    here = pathlib.Path(__file__).resolve().parent
+    root = edit / "hyperframes"
+    info = json.loads((root / "render.json").read_text(encoding="utf-8"))
+    ref, times = _tone_reference(root, info)
+    # the voice lines up with the picture lag MEASURED for this engine (HF: 0) — not the
+    # historical Remotion VIDEO_LAG of 1 frame (references/hyperframes-engine.md "A/V")
+    cmd = [sys.executable, str(here / "deliver_mix.py"), str(edit), "--picture", str(picture),
+           "--video-lag", str(int(info.get("pictureLagFrames", 0)))]
+    if ref:
+        cmd += ["--tone-ref", str(ref), "--tone-times", times]
+    chain = edit / "voice_chain.txt"
+    if chain.exists() and chain.read_text(encoding="utf-8").strip():
+        cmd += ["--voice-chain", chain.read_text(encoding="utf-8").strip()]
+    print("[3/3] deliver_mix --picture …", flush=True)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    print((r.stdout or "").strip(), flush=True)
+    if r.returncode != 0:
+        raise SystemExit(f"deliver_mix falhou:\n{(r.stderr or r.stdout)[-2000:]}")
+    q = subprocess.run([sys.executable, str(here / "qa_mix.py"), str(edit)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    print((q.stdout or "").strip()[-1500:], flush=True)
+    if q.returncode != 0:
+        print(f"[qa_mix] saiu com {q.returncode} — veja o relatório acima", flush=True)
+
+
+def _state_engine(edit: pathlib.Path, engine: str, fallback: list[str]) -> None:
+    st_p = edit / "state.json"
+    try:
+        st = json.loads(st_p.read_text(encoding="utf-8")) if st_p.exists() else None
+    except (OSError, json.JSONDecodeError):
+        st = None
+    if st is None:
+        return
+    st["engine"], st["engineFallback"] = engine, fallback
+    st_p.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--edit", required=True, help="the <videos_dir>/edit directory")
+    ap.add_argument("--engine", choices=["hyperframes", "remotion", "auto"], default=DEFAULT_ENGINE,
+                    help="motor da Fase 2: auto = HyperFrames se toda camada ligada estiver portada, "
+                         "senão o vídeo inteiro no Remotion (diz por quê)")
+    ap.add_argument("--skip-delivery", action="store_true", help="só a imagem (hf_parity compara os renders)")
+    ap.add_argument("--rebuild", action="store_true", help="HF: remonta do edit-data mesmo com edição no Studio")
+    ap.add_argument("--no-rebuild", action="store_true", help="HF: renderiza o projeto como está")
     ap.add_argument("--skip-render", action="store_true",
                     help="only rebuild the delivery from the existing render")
     ap.add_argument("--gl", default=None,
@@ -416,10 +573,29 @@ def main() -> None:
         except Exception as e:  # never block a render on the safety net
             print(f"[rosto] safe_layout ignorado: {e}", flush=True)
 
+    engine, fallback = choose_engine(ed, pub, edit, args.engine)
+    if fallback and engine == "remotion" and args.engine == "auto":
+        print(f"[motor] Remotion (vídeo inteiro) — não portado para o HyperFrames: {', '.join(fallback)}", flush=True)
+    else:
+        print(f"[motor] {'HyperFrames' if engine == 'hyperframes' else 'Remotion'}", flush=True)
+    _state_engine(edit, engine, fallback if engine == "remotion" else [])
+
     if not args.skip_render:
         ruins = check_media(ed, pub)
         if ruins:
             raise SystemExit("mídia que o render não vai conseguir ler:\n  " + "\n  ".join(ruins))
+
+    if engine == "hyperframes":
+        picture = edit / "hyperframes" / "out" / "render.mp4"
+        if not args.skip_render:
+            picture = render_hyperframes(edit, ed, args)
+        if not picture.exists():
+            raise SystemExit(f"sem render em {picture}")
+        if not args.skip_delivery:
+            deliver_hyperframes(edit, picture)
+        return
+
+    if not args.skip_render:
         npx = shutil.which("npx") or shutil.which("npx.cmd")
         if not npx:
             raise SystemExit("npx não encontrado no PATH")
@@ -454,6 +630,8 @@ def main() -> None:
 
     if not render.exists():
         raise SystemExit(f"sem render em {render}")
+    if args.skip_delivery:
+        return
 
     print("[2/2] montando entrega…", flush=True)
     vd = probe_duration(render)

@@ -1813,6 +1813,9 @@ function renderSetup() {
       // caption or the real headline is already labelled — by itself.
       if (o.mock || o.none || o.card) el('div', 'opt-name', card).textContent = forAspect(o.name);
       el('div', 'opt-mark', card);
+      // an option HyperFrames does not draw yet still renders — on Remotion, for
+      // the whole video. Labelled, never hidden or disabled (plan §4, decision 2).
+      if (engineUnported(engineKey(group, o.id))) el('div', 'opt-engine', card).textContent = 'via Remotion';
     }
     // the ghost only earns its space where there is a single option to explain
     if (opts.length < 2) el('div', 'opt ghost', host).textContent = 'mais estilos em breve';
@@ -1836,10 +1839,45 @@ function renderSetup() {
     el('div', 'chk-box', row);
     el('div', 'chk-ico', row).innerHTML = e.icon || '';
     el('div', 'chk-name', row).textContent = e.name;
+    if (engineUnported(engineKey('elements', e.id))) el('div', 'opt-engine', row).textContent = 'via Remotion';
   }
+  renderEngineChip();
 
   updateSummary();
 }
+
+// ---- Phase-2 engine (GET /api/engines → helpers/hfkit/layers LAYERS) ----
+// function declarations (hoisted): renderSetup may run before this point
+function engineKey(group, id) {
+  const pre = {captions: 'captions.', headlines: 'hook.', cards: 'highlights.'}[group];
+  if (pre) return pre + id;
+  if (group === 'elements') {
+    return {tracking: 'camera.tracking', flashCut: 'transitions', tracked3d: 'tracked', shaderCut: 'transitions.shader'}[id] || null;
+  }
+  return null;
+}
+var ENGINES = null;
+function engineUnported(key) {
+  return !!(key && ENGINES && ENGINES.layers && ENGINES.layers[key] && !ENGINES.layers[key].ported);
+}
+async function loadEngines() {
+  try { ENGINES = await (await fetch('/api/engines')).json(); } catch (e) { ENGINES = null; }
+  if (S.tab === 'style') renderSetup();
+}
+function renderEngineChip() {
+  const go = $('setupGo');
+  if (!go || !ENGINES || ENGINES.error) return;
+  let chip = $('engineChip');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'engineChip';
+    chip.className = 'engine-chip';
+    go.parentNode.insertBefore(chip, go);
+  }
+  const miss = ENGINES.unported || [];
+  chip.textContent = miss.length ? `motor: Remotion (por: ${miss.join(', ')})` : 'motor: HyperFrames';
+}
+loadEngines();
 
 $('styleSetup').addEventListener('click', (e) => {
   // the accent controls manage themselves (live, no rebuild) — keep the card

@@ -131,6 +131,10 @@ def main() -> None:
                     help="vídeo de referência do tom (ex.: a base que entrou no HyperFrames): mede o desvio de "
                          "luminância do --picture contra ela e devolve o tom com a curva inversa (só Y)")
     ap.add_argument("--tone-times", default="", help="tempos (s) sem overlay para medir, separados por vírgula")
+    ap.add_argument("--video-lag", type=int, default=1,
+                    help="quadros que a voz (e os SFX) atrasam para casar com a imagem. 1 = o VIDEO_LAG histórico "
+                         "do Remotion (padrão, inalterado). O HyperFrames passa o lag MEDIDO da imagem dele (0): "
+                         "references/hyperframes-engine.md")
     ap.add_argument("--picture", type=Path, default=None,
                     help="imagem final (ex.: render do acabamento HyperFrames); padrão remotion/out/render.mp4")
     a = ap.parse_args()
@@ -156,7 +160,7 @@ def main() -> None:
         sys.exit("render.mp4 não existe — rode render_phase2.py antes")
     vd = probe(render)
     fps = ed.get("fps", 30)
-    lag = round(48000 / fps)
+    lag = round(48000 * max(0, a.video_lag) / fps)
 
     def find(src: str) -> Path:
         for base in (edit / "sfx_cinema", edit.parent / "sfx_cinema", edit.parent.parent / "sfx_cinema",
@@ -277,7 +281,7 @@ def main() -> None:
     for i, c in enumerate(cues):
         inputs += ["-i", str(find(c["src"]))]
         k = len(inputs) // 2 - 1
-        d = max(0, round((float(c["at"]) + 1 / fps) * 48000))
+        d = max(0, round((float(c["at"]) + max(0, a.video_lag) / fps) * 48000))
         fc.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,volume={c.get('volume', 0.2)},adelay={d}S:all=1[s{i}]")
         sfx_labels.append(f"[s{i}]")
     if sfx_labels:

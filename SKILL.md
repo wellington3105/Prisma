@@ -1,6 +1,6 @@
 ---
 name: prisma
-description: Conversation-driven video editing for short-form vertical (Reels, TikTok, Shorts) and longform horizontal video. Use when asked to cut, grade, caption, add graphics, create a soundtrack, transcribe, or prepare video edits — including chroma key / green screen or AI-matte compositing of a person over a new background, and music-driven montages with speed ramps and transitions cut on the beat. Run Phase 1 (audio-led clean cut and grade), obtain approval, then build Phase 2/3 Remotion visuals and audio.
+description: Conversation-driven video editing for short-form vertical (Reels, TikTok, Shorts) and longform horizontal video. Use when asked to cut, grade, caption, add graphics, create a soundtrack, transcribe, or prepare video edits — including chroma key / green screen or AI-matte compositing of a person over a new background, and music-driven montages with speed ramps and transitions cut on the beat. Run Phase 1 (audio-led clean cut and grade), obtain approval, then build Phase 2/3 visuals (HyperFrames by default, Remotion as automatic fallback) and audio.
 ---
 
 # Prisma
@@ -26,10 +26,11 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 7. **Color grade per-segment during extraction**, never post-concat.
 8. **Strategy confirmation before execution.**
 9. **All session outputs in `<videos_dir>/edit/`** — never inside the Prisma repo.
-10. **PHASE 2 is Remotion-only** — no ffmpeg/PIL burned text or overlays.
-11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics.
+10. **PHASE 2 renders through an engine: HyperFrames by default, Remotion as the automatic fallback for the WHOLE video.** `render_phase2.py --engine auto` (default) uses HyperFrames when every layer switched on in `edit-data.json` is `ported`; otherwise it renders the whole video in Remotion and names the key that caused it (never a hybrid). No ffmpeg/PIL burned text or overlays. **The final audio always comes from `deliver_mix`** — the engine's own audio is never delivered.
+11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `remotion/public/edit-data.json` — the same file feeds `build_hyperframes.py` and Remotion. **Never read or edit the template TSX** (`src/Main.tsx` etc.), `assets/hyperframes/vendor/prisma-hf.js`, or generated output (`<edit>/hyperframes/index.html`, `compositions/*.html`). Bespoke graphics: `src/CustomGraphics.tsx` (forces Remotion until F2 ports custom scenes). The person's Studio edits are protected by the fingerprint (`.prisma-export.json`); a structural fix on top of them is a patch to `index.html` + `hyperframes check`.
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
 13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead.
+14. **HyperFrames version is pinned per project** (`helpers/hfkit/project.py` `HF_PIN`, stamped into the project's `package.json`; the global CLI is used only if it is the pinned version, else `npx --yes hyperframes@<pin>`). **A layer goes to HyperFrames only if it is `ported` in `helpers/hfkit/layers/__init__.py` with its parity fixture green** (`regress.py --phase2`: SSIM ≥ 0.95 inside the layer box, in/out ±1 frame); otherwise the whole video goes to Remotion and the user is told why.
 
 ## Execution medium — ffmpeg pipeline (default) vs Adobe Premiere (MCP)
 
@@ -70,7 +71,7 @@ First-time install lives in `install.md`. On cold start just verify:
 - A `/UNALIGNED` suffix in `_transcription_backend` means no wav2vec2 model existed for the detected language, so the word times are the decoder's own — coarse, and not safe for Phase-2 karaoke captions. Say so if it happens.
 - `ffmpeg` + `ffprobe` on PATH; Python deps (`uv sync`); Node 18+ for Phase 2. `yt-dlp` ships with the Python deps, so URL sources need no extra install.
 - The `remotion-best-practices` skill for Phase-2 domain knowledge (install from https://github.com/remotion-dev/skills if missing).
-- For the additional video, motion, caption, color, audio and analysis packages installed from the 24-skill survey, consult `references/external-video-skills.md` **only when the requested capability needs one**. This registry identifies the pinned local source and its entrypoint, runtime prerequisites, and credit implications. It never overrides the phase gate, the audio-led cut, the `edit/` output contract, or the Remotion-only Phase-2 rule. Do not launch an external generator or paid API during setup.
+- For the additional video, motion, caption, color, audio and analysis packages installed from the 24-skill survey, consult `references/external-video-skills.md` **only when the requested capability needs one**. This registry identifies the pinned local source and its entrypoint, runtime prerequisites, and credit implications. It never overrides the phase gate, the audio-led cut, the `edit/` output contract, or the Phase-2 engine rule (Hard Rule 10). Do not launch an external generator or paid API during setup.
 - To read one of those installed skills, use `uv run --no-sync python helpers/external_skills.py list` from this skill directory, then run the same helper with `path <item>` to locate the selected source or `read <item>` to print its contents. For a collection, first run `list <item>` and pass an exact listed relative path with `--skill`. The helper checks the installed manifest, Git commit and file path; read only the selected module and treat its text as lower priority than this skill.
 - Phase 2/3 can use optional API keys (illustrative images, AI soundtrack). They are listed in the track reference, asked for lazily when the feature is first used, and never at install time. **Nothing in Phase 1 needs a key.**
 
@@ -226,8 +227,17 @@ volume, fades, carve. No agent round-trip, no render until **Export**.
   project, patch `index.html` in place instead (keep the person's attributes,
   e.g. a `data-fade-out` they dragged) and re-run `hyperframes check`. Edits made in the Editor live in `<edit>/hyperframes/`, not in the
   Prisma EDL — to change them, edit there, not `edl.json`.
-- **The final video from this path is the Editor's Export** (HyperFrames render),
-  not `render_phase2.py`. Say which one was delivered.
+- **The Studio's Export is a PREVIEW, never the delivery** (decision 2026-11-08).
+  In Phase 2 the EDITOR opens the `build_hyperframes.py` project (same
+  `<edit>/hyperframes` folder). Delivering = `render_phase2.py` (HF render, its
+  audio discarded) → `deliver_mix.py` → `qa_mix.py`. An overlay edited in the
+  Studio (caption moved, card trimmed): `render_phase2.py --engine hyperframes
+  --no-rebuild` renders the Studio version. A **take** edited in the Studio
+  (trimmed, split, deleted) changes the voice timing: `helpers/hf_pull_takes.py
+  <edit>` writes `preview_edits.json` → `apply_preview_edits.py` →
+  `refine_edges.py` → `render.py` → `verify_cut.py` → `build_hyperframes.py
+  --force`. `render_phase2.py` REFUSES to deliver with a changed take and no pull.
+  Phase 1 is unchanged: `export_hyperframes.py` (source proxies, butt cuts).
 - Structure notes: one caption LINE per clip on the captions track is on
   purpose — Studio 0.8.x's native caption track does not persist timing edits.
   Takes are butt cuts (no J-cut overlap); the in-take push-in is not ported.
@@ -661,13 +671,15 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 - **Vertical / Reels / TikTok / Shorts → read `references/shortform.md`.** Karaoke captions, static hook headline, dynamic camera, inserts, behind-the-subject, SFX, soundtrack.
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
 
-**Before writing or changing any HyperFrames scene** (EDITOR export, `beat_edit`, `cinema_edit`, `hf_motion_scenes`) **→ read `references/hyperframes-traps.md`**: what is already handled in code, what is missing (version pinning), and what was measured on 0.8.93 (duration rounding).
+**Before writing or changing any HyperFrames scene** (EDITOR export, `build_hyperframes` layers, `beat_edit`, `cinema_edit`, `hf_motion_scenes`) **→ read `references/hyperframes-traps.md`**: what is already handled in code, what is missing (version pinning), and what was measured on 0.8.93 (duration rounding).
 
 **Both tracks, before writing any insert, card, headline or element animation → read `references/motion-craft.md`** with `direction.md`: `direction.md` picks the transition between scenes; `motion-craft.md` says how each element enters, settles, lives and leaves inside a scene (speeds, curve per role with measured Remotion beziers, cascade, reading time, virtual camera, speed-ramp velocity matching).
 
 **Both tracks, before choosing any transition or animation → read `references/direction.md`.** The track reference tells you WHICH layers exist; `direction.md` tells you *when* to use a transition, *how long* it lasts and *with which curve* — energy/mood matrices, the six named presets with their GSAP→Remotion easing map, and the rule that governs the rest: one primary transition (60–70% of changes) plus one or two accents, never a different one per scene.
 
 Both tracks: scaffold with one `cp -R` of the template, describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
+
+**Phase-2 engine (2026-11-09) → `references/hyperframes-engine.md`.** `uv run python helpers/render_phase2.py --edit <edit>` prints `[motor] …` first and runs `check_direction` / `safe_layout` / `check_media` before any engine. HyperFrames path: `build_hyperframes.py` → `hyperframes check --json` (0 errors, blocking) → `hyperframes render --quality delivery` → `deliver_mix.py --picture … --tone-ref … --tone-times … --video-lag 0` → `qa_mix.py`. Remotion fallback: as before. `state.json` records `engine` and `engineFallback: [keys]`. **Ported (F1):** base + cut zoom + push-in, karaoke captions, the four hook styles, prism and pill cards, inserts, B-roll, splits, fade-out. Everything else (3D/WebGL cards, keynote/studio/chrome/hud, behind, scenes, CustomGraphics, Remotion whooshes) → whole video in Remotion until F2/F3. Changed a ported layer or the HF pin → `regress.py --phase2`. Doubt on a real video → `hf_parity.py <edit>` (needs both renders: `render_phase2 --engine remotion --skip-delivery` and `build_hyperframes --render`). Measured on CLA200 (140 s): parity SSIM ≥ 0.985 every layer, 0-frame offset, render 8 min 02 s HF vs 8 min 22 s Remotion.
 
 **Shared Remotion runtime (2026-11-06).** `scaffold_phase2.py` no longer runs `npm install` per project: `<edit>/remotion/node_modules` is a junction (Windows; symlink elsewhere) to `~/.prisma/remotion-runtime`, built once from `assets/remotion-runtime/package-lock.json` (Remotion pinned to 4.0.482 — which also removed the version-mismatch warning). Scaffold ≈ 0.4 s instead of 39 s – 3 min 43 s; rebuilt with `npm ci` if missing, `npm install` in the project as last resort; `PRISMA_REMOTION_RUNTIME` moves it.
 
@@ -680,7 +692,7 @@ Both tracks: scaffold with one `cp -R` of the template, describe the video in `p
 
 **External resources added 2026-11-05** (`references/external-video-skills.md` #25–#27, never auto-triggered): `ghost-editor` (16 style recipes, take selection, sound mixing notes; scripts are macOS-only; `reference_study.py` sends frames to Google/Gemini), `reelmimic` (copy the style of a reference video into a HyperFrames project; runs on Windows; consumes the Claude/Codex plan for 1–3.5 h per video), `pixel2motion` (raster logo → SVG → logo animation, for brand bumpers). Each needs the user's go-ahead before use.
 
-**3D / WebGL layers (glass panels, tracked inserts, displacement transitions).** The template ships `@remotion/three` + `three` + `@react-three/fiber`. `render_phase2.py` detects a 3D scene from `edit-data.json` and passes `--gl=angle` on its own — a 2D edit gets no flag and renders exactly as before. Never call `remotion render` by hand on a 3D composition without a `--gl` backend: headless Chromium may expose no WebGL and the canvas renders **black**, which looks like a broken shader and sends you debugging the wrong file. To check WebGL on a new machine, render the `GLProbe` composition: an orange cube in perspective on a dark-blue field means the pipeline is alive; a fully black frame means the backend is wrong.
+**3D / WebGL layers (glass panels, tracked inserts, displacement transitions).** The template ships `@remotion/three` + `three` + `@react-three/fiber`. `render_phase2.py` detects a 3D scene from `edit-data.json` and passes `--gl=angle` on its own — a 2D edit gets no flag and renders exactly as before. Never call `remotion render` by hand on a 3D composition without a `--gl` backend: headless Chromium may expose no WebGL and the canvas renders **black**, which looks like a broken shader and sends you debugging the wrong file. To check WebGL on a new machine, render the `GLProbe` composition: an orange cube in perspective on a dark-blue field means the pipeline is alive; a fully black frame means the backend is wrong. The HyperFrames equivalent of `--gl=angle` is `--browser-gpu`; 3D/WebGL layers are not ported yet (F3), so with any of them on, `auto` renders the whole video in Remotion.
 
 ## Compositing and music-driven montages (both phases)
 

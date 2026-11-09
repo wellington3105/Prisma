@@ -16,6 +16,8 @@ Uso:
     uv run python helpers/regress.py --update     # grava o esperado (só quando a
                                                   # mudança foi pedida e conferida)
     uv run python helpers/regress.py --keep       # não apaga a pasta de trabalho
+    uv run python helpers/regress.py --phase2     # Fase 2: HyperFrames × Remotion, mesmo
+                                                  # edit-data (tests/fixture_phase2)
 
 O fixture é um recorte de 35 s (720p) de uma cópia do projeto Cayenne, com 9
 ranges de `reel_01`. É material de cliente: uso local, não publique.
@@ -151,11 +153,50 @@ def compare(got: dict, exp: dict) -> list[tuple[str, bool, str]]:
     return res
 
 
+def phase2(keep: bool) -> None:
+    """Fase 2: o MESMO edit-data nos dois motores (tests/fixture_phase2), paridade por camada.
+
+    Uma camada só fica `ported` em helpers/hfkit/layers (LAYERS) com isto verde."""
+    work = Path(tempfile.mkdtemp(prefix="prisma-regress-p2-"))
+    print(f"== regressão Fase 2 (HyperFrames × Remotion) · trabalho em {work}")
+    py = [sys.executable]
+    fails = 0
+    try:
+        out = subprocess.run(py + [str(ROOT / "tests" / "fixture_phase2" / "make_fixture.py"), str(work)],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout
+        npx = shutil.which("npx") or shutil.which("npx.cmd")
+        for edit in [Path(x) for x in out.split()]:
+            comp = "Longform" if 'id="Longform"' in (edit / "remotion" / "src" / "Root.tsx").read_text(encoding="utf-8") else "Reels"
+            t0 = time.time()
+            subprocess.run([npx, "remotion", "render", comp, "out/render.mp4"], cwd=edit / "remotion",
+                           capture_output=True, check=True)
+            t1 = time.time()
+            subprocess.run(py + [str(ROOT / "helpers" / "build_hyperframes.py"), str(edit), "--render"],
+                           capture_output=True, check=True)
+            t2 = time.time()
+            r = subprocess.run(py + [str(ROOT / "helpers" / "hf_parity.py"), str(edit)], capture_output=True,
+                               text=True, encoding="utf-8", errors="replace")
+            print(f"-- {edit.parent.name}: Remotion {t1 - t0:.0f}s · HF (montagem+render) {t2 - t1:.0f}s")
+            print("\n".join("   " + l for l in r.stdout.strip().splitlines()))
+            fails += r.returncode != 0
+        print(f"== Fase 2: {'OK' if not fails else f'{fails} fixture(s) FALHOU(ARAM)'}")
+        sys.exit(1 if fails else 0)
+    finally:
+        if keep:
+            print(f"  pasta mantida: {work}")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--update", action="store_true", help="grava o resultado como esperado")
     ap.add_argument("--keep", action="store_true", help="não apaga a pasta de trabalho")
+    ap.add_argument("--phase2", action="store_true", help="paridade HyperFrames × Remotion (tests/fixture_phase2)")
     a = ap.parse_args()
+    if a.phase2:
+        phase2(a.keep)
+        return
     if not CLIP.exists() or not EDL_IN.exists():
         sys.exit(f"fixture ausente em {FIX}")
     # Poka-Yoke: os helpers rodam com helpers/ no início do sys.path, então um

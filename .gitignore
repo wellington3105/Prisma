@@ -33,3 +33,10 @@ helpers.bak.*/
 # Caches e modelos baixados sob demanda (YuNet via --fetch-model, LUT HDR gerada).
 helpers/_cache/
 helpers/models/
+
+# saídas de projeto geradas na raiz por engano (dados de cliente — nunca no repo público)
+/audio.wav
+/media_ledger.json
+/sfx_index.json
+/perfis/
+/.omc/

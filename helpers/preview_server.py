@@ -194,6 +194,14 @@ class RenderJob:
         while True:
             script = Path(__file__).resolve().parent / "render_phase2.py"
             cmd = [sys.executable, str(script), "--edit", str(self.root)]
+            # the engine chosen for this video (state.json `engine`, set by render_phase2
+            # / the Estilo tab); absent = render_phase2's default (`auto`)
+            try:
+                eng = json.loads((self.root / "state.json").read_text(encoding="utf-8")).get("engineRequest")
+            except (OSError, json.JSONDecodeError):
+                eng = None
+            if eng in ("hyperframes", "remotion", "auto"):
+                cmd += ["--engine", eng]
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True)
                 out = (r.stdout or "") + (r.stderr or "")
@@ -482,8 +490,29 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.studio.status(start=True) if self.studio else {"available": False})
         elif path == "/api/state":
             self._state()
+        elif path == "/api/engines":
+            self._engines()
         else:
             self._proxy()
+
+    def _engines(self) -> None:
+        """Which Phase-2 layers HyperFrames draws (hfkit LAYERS) and, for this video,
+        which ON layers send it to Remotion — the Estilo tab labels those "via Remotion"."""
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from hfkit.layers import public_table, unported
+            pub = self.root / "remotion" / "public"
+            ed_p = pub / "edit-data.json"
+            ed = json.loads(ed_p.read_text(encoding="utf-8")) if ed_p.exists() else {}
+            miss = unported(ed, pub, self.root) if ed else []
+            st = {}
+            if (self.root / "state.json").exists():
+                st = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+            self._json({"layers": public_table(), "unported": miss,
+                        "engine": st.get("engine") or ("remotion" if miss else "hyperframes"),
+                        "engineFallback": st.get("engineFallback") or miss})
+        except Exception as e:  # never break the UI over a status call
+            self._json({"error": str(e)}, 500)
 
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.split("?", 1)[0]
