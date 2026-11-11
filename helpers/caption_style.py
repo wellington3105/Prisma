@@ -211,8 +211,12 @@ def build_lines(ws: list[dict]) -> list[list[dict]]:
                     line.append(ws[i])
                     i += 1
                 lines.append(line)
-            else:
+            elif lines:
                 lines[-1].append(w)
+                i += 1
+            else:
+                # cue made of a single 1-letter word: nothing to lean on
+                lines.append([w])
                 i += 1
         else:
             lines.append([w])

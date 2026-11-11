@@ -182,6 +182,26 @@ header {
 /* ---------- tabs ---------- */
 .tabs { display: flex; gap: 8px; margin: 10px 14px 0; flex: 0 0 auto; }
 
+/* Claude's markers — information, blue; warnings yellow. One row that scrolls
+   sideways instead of growing: it must never push the EDITOR down. */
+.agent-strip {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 14px 0; flex: 0 0 auto;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.agent-strip .agent-lbl { font-size: 11px; color: var(--dim); white-space: nowrap; margin-right: 2px; }
+.agent-item {
+  font-size: 11.5px; line-height: 1; padding: 5px 10px; border-radius: 999px;
+  white-space: nowrap; cursor: help;
+  background: rgba(122, 168, 255, 0.12); border: 1px solid rgba(122, 168, 255, 0.5); color: #d4e3ff;
+}
+.agent-item b { font-variant-numeric: tabular-nums; font-weight: 600; margin-right: 6px; color: var(--spec-4); }
+.agent-item.k-alerta, .agent-item.k-borda {
+  background: rgba(255, 209, 102, 0.12); border-color: rgba(255, 209, 102, 0.5); color: #ffe9b0;
+}
+.agent-item.k-alerta b, .agent-item.k-borda b { color: var(--spec-2); }
+.agent-item.out-of-cut { opacity: 0.55; border-style: dashed; }
+
 .tab {
   font-family: inherit;
   /* 700 at 12.5px was chunky. A studio UI labels things in small caps with wide
@@ -798,6 +818,23 @@ kbd {
   box-sizing: border-box;
 }
 .note-chip:hover { background: rgba(255, 84, 112, 0.4); }
+/* Claude's markers (agent_markers.json): information, not a pending edit —
+   blue, or yellow for warnings; a thin flag on the lane's lower half so the
+   user's red notes stay the dominant shape of this track */
+.agent-chip {
+  position: absolute;
+  bottom: 3px;
+  height: 12px;
+  min-width: 6px;
+  border-radius: 3px;
+  background: rgba(122, 168, 255, 0.55);
+  border: 1px solid var(--spec-4);
+  box-sizing: border-box;
+  cursor: help;
+  z-index: 2;
+}
+.agent-chip.k-alerta, .agent-chip.k-borda { background: rgba(255, 209, 102, 0.55); border-color: var(--spec-2); }
+.agent-chip.out-of-cut { opacity: 0.4; border-style: dashed; }
 /* the open IN, still waiting for its OUT */
 .note-pending {
   position: absolute;
@@ -1103,6 +1140,8 @@ kbd {
    Geometry is scaled from 1080-wide, so every ratio matches the render.
    Positions/opacities are written by JS each frame (capAnims in app.js). */
 .cap-demo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+/* 16:9: captions sit low (baseline 10% of height from the bottom), like the render */
+.cap-demo.ls .kar-line, .cap-demo.ls .stat-demo { bottom: 10%; }
 .kar-line {
   position: absolute;
   display: flex;
@@ -1418,3 +1457,60 @@ button.tl-chip:disabled { cursor: default; }
   border-right: 1px solid rgba(255, 138, 61, 0.75);
 }
 .tl-chip.ghost { opacity: 0.55; }
+
+/* ---- card-3D demos (buildCardDemo): the ENTRANCE of each look, looping ------ */
+.cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; overflow: hidden; }
+.cd-box { position: relative; padding: .55em .95em; white-space: nowrap; overflow: hidden; }
+.cd-txt { position: relative; font-weight: 800; line-height: 1.05; }
+.cd-lab { position: relative; font-size: .5em; letter-spacing: .14em; opacity: .8; }
+.cd-shine { position: absolute; top: -30%; bottom: -30%; width: 40%; left: -60%; transform: rotate(16deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); }
+/* prism / pill (the originals) */
+.cd-prism .cd-box { border-radius: 12px; background: linear-gradient(135deg, rgba(255,255,255,.28), rgba(255,255,255,.06) 45%, rgba(14,18,28,.45)); box-shadow: 0 0 0 1.5px #b9a2ff, -3px 0 10px rgba(255,50,110,.25), 3px 0 10px rgba(50,150,255,.3); animation: cd-prism 3.2s ease-in-out infinite; }
+.cd-prism .cd-shine { animation: cd-sweep 3.2s ease-in-out infinite; }
+.cd-pill .cd-box { border-radius: 99px; padding: .5em 1.3em; background: rgba(12,17,28,.7); border: 1.5px solid rgba(255,255,255,.25); animation: cd-pop 3.2s ease-out infinite; }
+@keyframes cd-prism { 0% { opacity: 0; transform: perspective(300px) rotateY(-38deg) scale(.86); } 14% { opacity: 1; transform: perspective(300px) rotateY(-14deg) scale(1); } 85% { opacity: 1; transform: perspective(300px) rotateY(-6deg); } 100% { opacity: 0; transform: perspective(300px) rotateY(4deg) scale(.9); } }
+@keyframes cd-pop { 0% { opacity: 0; transform: scale(.6); } 12% { opacity: 1; transform: scale(1.06); } 20%, 85% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.9); } }
+@keyframes cd-sweep { 0%, 20% { left: -60%; } 55%, 100% { left: 140%; } }
+/* keynote: frosted, light weight, label below, one sweep after it settles */
+.cd-keynote .cd-box { border-radius: 14px; padding: .7em 1.2em .65em; background: rgba(29,29,31,.86); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 8px 22px rgba(0,0,0,.5); animation: cd-keynote 3.4s infinite; }
+.cd-keynote .cd-txt { font-family: 'Inter', sans-serif; font-weight: 300; font-size: 2.1em; letter-spacing: -.03em; color: #f5f5f7; }
+.cd-keynote .cd-lab { font-family: 'Inter', sans-serif; font-weight: 500; font-size: .62em; letter-spacing: .01em; color: #a1a1a6; margin-top: .25em; }
+.cd-keynote.light .cd-box { background: rgba(245,245,247,.95); border-color: rgba(255,255,255,.9); box-shadow: 0 8px 22px rgba(0,0,0,.28); }
+.cd-keynote.light .cd-txt { color: #1d1d1f; }
+.cd-keynote.light .cd-lab { color: #6e6e73; }
+.cd-keynote .cd-shine { animation: cd-sweep 3.4s ease-in-out infinite; animation-delay: .5s; opacity: .8; }
+@keyframes cd-keynote { 0% { opacity: 0; transform: translateY(12px) scale(.96); filter: blur(6px); } 14% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } 85% { opacity: 1; transform: none; filter: blur(0); } 100% { opacity: 0; transform: translateY(-3px); } }
+/* studio: matte panel, orange bar, mono readout, ticks drawing left -> right */
+.cd-studio .cd-box { background: #111213; border: 1px solid #2b2e31; border-left: 0; border-radius: 2px; padding: .55em 1em .6em 1.25em; font-family: 'IBM Plex Mono', ui-monospace, monospace; animation: cd-studio 3.2s infinite; }
+.cd-studio .cd-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #ff7a1a; }
+.cd-studio .cd-lab { font-family: inherit; color: #8e9297; margin-bottom: .35em; }
+.cd-studio .cd-txt { font-family: inherit; font-weight: 500; font-size: 1.5em; color: #f3f3f1; overflow: hidden; width: 6ch; animation: cd-type 3.2s steps(6) infinite; }
+.cd-studio .cd-ticks { height: .7em; margin-top: .45em; background: repeating-linear-gradient(90deg, #4b4f53 0 1px, transparent 1px 4px); transform-origin: left; animation: cd-ruler 3.2s infinite; }
+@keyframes cd-studio { 0% { opacity: 0; transform: translateX(-16px); } 8% { opacity: 1; transform: none; } 88% { opacity: 1; } 100% { opacity: 0; transform: translateX(6px); } }
+@keyframes cd-type { 0%, 10% { width: 0; } 38%, 100% { width: 6ch; } }
+@keyframes cd-ruler { 0%, 12% { transform: scaleX(0); } 40%, 100% { transform: scaleX(1); } }
+/* chrome: metal word, extrusion, one light streak */
+.cd-chrome .cd-box { padding: .2em .5em; animation: cd-chrome 3.2s ease-out infinite; }
+.cd-chrome .cd-txt { font-family: 'Poppins', sans-serif; font-weight: 900; font-size: 2.6em; letter-spacing: -.02em; color: transparent; background: linear-gradient(180deg, #fff 0%, #c9ced6 38%, #5b6068 52%, #e8ebf0 70%, #9aa0a8 100%); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(1px 1px 0 #6b7078) drop-shadow(2px 2px 0 #50555c) drop-shadow(3px 4px 3px rgba(0,0,0,.6)); }
+.cd-chrome .cd-shine { animation: cd-sweep 3.2s ease-in-out infinite; mix-blend-mode: screen; }
+@keyframes cd-chrome { 0% { opacity: 0; transform: perspective(260px) rotateY(25deg) scale(.9); } 16% { opacity: 1; transform: perspective(260px) rotateY(0) scale(1); } 86% { opacity: 1; } 100% { opacity: 0; transform: scale(.97); } }
+/* hud: brackets draw, scan line passes, text decodes */
+.cd-hud .cd-box { padding: .8em 1.4em; font-family: 'JetBrains Mono', ui-monospace, monospace; background-color: rgba(4,16,24,.55); background-image: linear-gradient(rgba(79,227,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(79,227,255,.08) 1px, transparent 1px); background-size: 7px 7px; overflow: visible; animation: cd-hud 3.4s infinite; }
+.cd-hud .cd-lab { color: #4fe3ff; margin-bottom: .3em; }
+.cd-hud .cd-txt { font-family: inherit; font-weight: 500; font-size: 1.45em; color: #e9fbff; text-shadow: 0 0 8px #4fe3ff99; animation: cd-decode 3.4s infinite; }
+.cd-br { position: absolute; width: 9px; height: 9px; border: 0 solid #4fe3ff; animation: cd-draw 3.4s infinite; }
+.cd-tl { left: 0; top: 0; border-left-width: 1.5px; border-top-width: 1.5px; }
+.cd-tr { right: 0; top: 0; border-right-width: 1.5px; border-top-width: 1.5px; }
+.cd-bl { left: 0; bottom: 0; border-left-width: 1.5px; border-bottom-width: 1.5px; }
+.cd-brr { right: 0; bottom: 0; border-right-width: 1.5px; border-bottom-width: 1.5px; }
+.cd-scan { position: absolute; left: 0; right: 0; height: 2px; top: 0; background: linear-gradient(90deg, transparent, #4fe3ff, transparent); box-shadow: 0 0 8px #4fe3ff; animation: cd-scan 3.4s infinite; opacity: 0; }
+@keyframes cd-hud { 0% { opacity: 0; } 6%, 86% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes cd-draw { 0% { width: 0; height: 0; } 14%, 100% { width: 9px; height: 9px; } }
+@keyframes cd-scan { 0%, 12% { top: 0; opacity: 0; } 14% { opacity: 1; } 34% { top: 100%; opacity: 1; } 36%, 100% { top: 100%; opacity: 0; } }
+@keyframes cd-decode { 0%, 14% { opacity: .15; letter-spacing: .3em; filter: blur(1.5px); } 26% { opacity: .6; letter-spacing: .1em; } 36%, 100% { opacity: 1; letter-spacing: 0; filter: none; } }
+
+/* Phase-2 engine (GET /api/engines): an option HyperFrames does not draw yet */
+.opt-engine { font-size: 10px; letter-spacing: .04em; opacity: .7; margin-top: 4px; text-transform: uppercase; }
+.chk .opt-engine { margin: 0 0 0 auto; }
+.engine-chip { display: inline-block; font-size: 12px; padding: 4px 10px; margin-right: 10px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18); opacity: .85; }

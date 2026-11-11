@@ -57,12 +57,21 @@ def digest(p: Path) -> str:
         head.append(f"{n_ch} take(s) reajustado(s)")
     if n_rm:
         head.append(f"{n_rm} take(s) removido(s)")
+    if edl.get("splits"):
+        head.append(f"{edl['splits']} pedaço(s) de lâmina")
     if ed:
-        head.append("inserts/gancho movidos")
+        head.append("inserts/gancho/cards movidos (já gravados no edit-data.json pelo servidor)")
+    if d.get("captions"):
+        head.append(f"legenda editada ({len(d['captions'])} palavras — já gravada no captions.json)")
     if not head:
         head.append("ajustes salvos")
 
     out = [f"AJUSTES DO PREVIEW ({d.get('savedAt', '')}) — {', '.join(head)}. Aplique-os."]
+    if edl.get("ranges"):
+        # a CUT change: Phase 1 re-render + re-time every Phase-2 overlay. The
+        # server cannot do this one; it needs the skill.
+        out.append(f"  CORTE: edl.ranges tem {len(edl['ranges'])} trecho(s) — grave em edl.json, "
+                   "rode render.py + verify_cut e re-temporize legendas/cards/split no novo cut.mp4.")
     out += parts
     return "\n".join(out)
 
@@ -88,6 +97,8 @@ def style_digest(p: Path) -> str:
         f'  · headline: {d.get("headlineName") or d.get("headline")}',
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
+    if d.get("cardStyle"):
+        out.append(f'  · estilo do card 3D (`highlights.variant`/`tone`): {d.get("cardStyleName") or d.get("cardStyle")}')
     # Only worth reporting when the chosen styles actually paint an accent —
     # naming a colour that nothing uses reads as an instruction to go find a
     # place for it.

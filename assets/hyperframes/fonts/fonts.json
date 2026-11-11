@@ -1,0 +1,20 @@
+{
+  "_readme": "Local font files for HyperFrames (contract §9). Poppins = the exact woff2 files @remotion/google-fonts 4.0.482 loads (fonts.gstatic.com/s/poppins/v24), so both engines draw the same glyphs. CSS family names carry the 'Prisma' prefix so HyperFrames' own bundled Poppins never stands in for them.",
+  "families": {
+    "PrismaPoppins": [
+      {"weight": 400, "style": "normal", "files": {"latin": "poppins-latin-400-normal.woff2", "latin-ext": "poppins-latin-ext-400-normal.woff2"}},
+      {"weight": 600, "style": "normal", "files": {"latin": "poppins-latin-600-normal.woff2", "latin-ext": "poppins-latin-ext-600-normal.woff2"}},
+      {"weight": 700, "style": "normal", "files": {"latin": "poppins-latin-700-normal.woff2", "latin-ext": "poppins-latin-ext-700-normal.woff2"}},
+      {"weight": 800, "style": "normal", "files": {"latin": "poppins-latin-800-normal.woff2", "latin-ext": "poppins-latin-ext-800-normal.woff2"}},
+      {"weight": 900, "style": "normal", "files": {"latin": "poppins-latin-900-normal.woff2", "latin-ext": "poppins-latin-ext-900-normal.woff2"}}
+    ],
+    "PrismaLora": [
+      {"weight": 400, "style": "normal", "files": {"latin": "lora-latin-400-normal.woff2"}},
+      {"weight": 700, "style": "italic", "files": {"latin": "lora-latin-700-italic.woff2"}}
+    ]
+  },
+  "unicodeRange": {
+    "latin": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+    "latin-ext": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+  }
+}

@@ -11,7 +11,7 @@ what changes is the cut intent, output spec, captions, and the Phase-2 visuals.
 | Aspect / res | 1080×1920 @ 24 | **16:9 at source res/fps** (`render.py --keep-resolution`) |
 | Cut goal | max compression | **retention arc**, keep pacing/breath |
 | Silence trim | aggressive (30–80ms pads) | **gentle** — cut fillers/mistakes/dead-air > ~0.8s; keep 300–600ms beats |
-| Captions | karaoke burned | **`.srt` for YouTube CC** (not burned) — `captions_srt.py` |
+| Captions | karaoke burned | **`.srt` for YouTube CC** by default — `captions_srt.py`; burned captions are **optional** (`captions.enabled`, Reels horizontal) |
 | Hook | static 4s headline | **cold open** (5–15s tease) + intro |
 | Camera | hard-zoom dynamic | mostly static; **B-roll cutaways** carry variety |
 | Template | `assets/shortform/` | **`assets/longform/`** |
@@ -59,9 +59,46 @@ Same helpers (`transcribe` → `pack` → editor sub-agent → `speech_regions` 
 - `transcribe.py cut.mp4 --edit-dir <edit>` then
   `captions_srt.py --transcript <edit>/transcripts/cut.json -o <edit>/captions.srt`
   — broadcast-style cues (≤42 chars/line, ≤2 balanced lines, 1–6s, sentence
-  case). Uploaded as CC, never burned.
+  case). Uploaded as CC, never burned into the YouTube file.
+
+## Legenda queimada em 16:9 (Reels horizontal)
+
+Burned captions now exist in the 16:9 template too (`assets/longform/src/Captions.tsx`
++ `SimpleCaptions.tsx`), off by default. Use them when the same horizontal video
+also goes to Instagram Reels, where there is no CC toggle.
+
+- `edit-data.json` → `"captions": {"enabled": true, "style": "karaoke"}`.
+  `style`: `karaoke` (default), `stacked`, `scatter`, `simples`, `serifada`,
+  `classica` — all six, as in 9:16. Optional: `maxWords` (default 6), `fontScale`
+  (default 1), `highlight` (karaoke: colour of the word being spoken), `side`
+  (`stacked`/`scatter`: `"left"` default | `"right"` | `"center"` — the free third
+  beside the speaker; judge it per video, never over the face).
+- `stacked` also needs `caption_style.py --transcript <edit>/transcripts/cut.json
+  -o <edit>/remotion/public/caption-cues.json` (same helper as 9:16; the scaffold
+  ships an empty placeholder). `scatter` reads `captions.json` alone.
+- Needs `public/captions.json` — `captions_for_remotion.py --transcript
+  <edit>/transcripts/cut.json -o <edit>/remotion/public/captions.json`
+  (the scaffold ships an empty `[]`).
+- Layout is landscape, not portrait pixels: everything is a ratio of the frame
+  (size ≈ 5.8% of height, baseline 10% of height from the bottom, line ≤ 70% of
+  width), so 1080p and 4K render the same picture. Captions are drawn ABOVE
+  B-roll, glass and transitions so they stay readable over cutaways.
+- **Two deliveries, ONE edit.** Render the same `edit-data.json` twice, changing
+  only `captions.enabled`:
+  - `true` → the Reels file (captions burned in);
+  - `false` → the YouTube file, plus the `.srt` sidecar from `captions_srt.py`.
+  Never two different edits — same cut, same B-roll, same timing; the only
+  difference is the caption layer. `render_phase2.py` picks the `Longform`
+  composition automatically for this template.
 
 ## Phase 2 — 16:9 visuals (data-driven template)
+
+**Plano de inserts first** — same gate as short-form (`shortform.md`, "Plano de
+inserts"): every B-roll cutaway, callout and chapter card is an `iNN` item
+approved by number before it is written into `edit-data.json`
+(`inserts_plan.py check → show → approve → apply`). On longform, approve by
+section ("o gancho primeiro", "até 3:00") — the plan can be partially approved
+and applied as it goes.
 
 Scaffold + describe, same pattern as short-form:
 
@@ -113,6 +150,10 @@ existe.
 
 ## Helpers de Fase 2/3
 
+- **`epidemic_music.py`** — trilha licenciada do Epidemic Sound: `search` →
+  `fit <id> --duration <cut>` (edição com final real, ≤300s) ou `download`
+  inteira/stem. Fluxo em `references/soundtrack.md` "Catálogo licenciado".
+
 ---
 
 ## Chaves opcionais (nunca pedidas na instalação)
@@ -127,6 +168,7 @@ pelo caminho sem chave e diga o que muda.
 | `PEXELS_API_KEY` | imagens/vídeos ilustrativos | Wikimedia Commons cobre a maioria |
 | `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | marcas, pessoas e logos específicos | Wikimedia é o fallback |
 | `TREBLO_API_KEY` | trilha sonora composta por IA (Fase 3) | trilha só a partir de arquivo local |
+| `EPIDEMIC_SOUND_MCP_API_KEY` | trilha + SFX do catálogo Epidemic Sound (Fase 3) | Treblo ou arquivo local |
 
 ### Como o usuário cria a chave do Treblo (trilha com IA)
 
@@ -161,6 +203,103 @@ ocupa 76% da largura em 9:16 fica desproporcional em 16:9 — ali ele quer um
 terço da tela, deixando espaço para o falante. Verificado com
 `rect: {x: 0.06, y: 0.24, w: 0.40, h: 0.52}`, que é o painel encostado à
 esquerda com o apresentador livre à direita.
+
+### Rosto livre (safe_layout.py)
+
+Card, headline, bloco de legenda `stacked`/`scatter` e callout têm posição fixa no
+`edit-data.json`; quando o falante se mexe, eles passam em cima da cabeça. O
+`helpers/safe_layout.py` mede onde o rosto está a cada instante e põe cada overlay
+onde não o cobre (lógica de posicionamento portada do ghost-editor, MIT:
+abaixo do queixo -> acima da cabeça -> ao lado -> reduzido a 90%/80%, sempre dentro
+da área segura da plataforma).
+
+**Quando rodar:** DEPOIS de escrever o `edit-data.json` (highlights, hook, legenda),
+ANTES do render. O `render_phase2.py` já roda `--report` sozinho e imprime
+`[rosto] WARNING` para cada colisão; com `"safeLayout": "auto"` no edit-data ele
+aplica sozinho (backup `edit-data.before_safe_layout.<ts>.json`).
+
+```bash
+uv run python helpers/safe_layout.py <edit> --report                    # só relata
+uv run python helpers/safe_layout.py <edit> --apply [--platform all]    # reposiciona
+```
+
+- `--platform instagram|tiktok|shorts|youtube|all` (default `all`). 9:16: faixas de
+  UI da plataforma (topo ~14%, base ~20%, coluna de botões à direita só na metade
+  de baixo — medidas do ghost-editor); 16:9: margem de título de 5%.
+- Rosto: `remotion/public/faces.json` (>= 5 fps, caixa com cabelo e queixo; não leia
+  esse arquivo, é dado de máquina). Detector: YuNet se `helpers/models/face_detection_yunet_2023mar.onnx`
+  existir (`--fetch-model` baixa, MIT), senão OpenCV Haar frontal + perfil; caixas
+  fora de consenso são descartadas e as falhas curtas seguram a última posição.
+  Janelas cobertas por B-roll em tela cheia ou tela dividida são ignoradas (o
+  falante não está na tela). O zoom/tracking da `camera` entra na conta.
+- Move: `highlights.items[]` (x, y e `scale` 0.8–1), `hook` (`paddingTop`, `side` no
+  16:9), `callouts` (x, y), bloco `stacked`/`scatter` (`captions.side` no 16:9,
+  `stackedOffsetY`/`scatterOffsetY` no 9:16), e `focusX/focusY` de `splitInserts`.
+  Sem espaço único para o card na janela inteira, ele é DIVIDIDO em dois itens
+  (o rosto atravessou o quadro). lowerThirds/chapters só são avisados (sem chaves de posição).
+- **Título (`hook`) e callouts vivem no TOPO:** só trocam de lado na mesma faixa (o canto mais
+  distante do rosto primeiro) -> encolhem a 90% / 80% (`hook.scale`; ausente = 1) -> senão
+  NÃO se movem e o relatório diz `sem espaço no topo — use B-roll/plano aberto sob o título ou
+  encurte o texto`. Nunca abaixo do queixo nem na faixa do meio. Hook sobre B-roll em tela
+  cheia / tela dividida = OK, não mexe.
+- Item movido recebe `"autoPlaced": true`; **`"lockPos": true` nunca é movido** (só relatado).
+- `SEM ESPAÇO` = nenhuma posição livre (close-up): faça aquela janela em tela cheia
+  (B-roll) ou encurte o texto. O `--report` sai com código 1 se algo precisa de ajuste.
+- Limite honesto: o detector padrão (Haar) acha o rosto em ~64% das amostras brutas
+  (~40% consistentes) no CLA200; os buracos seguram a última posição. Com YuNet o
+  número sobe — rode `--fetch-model` uma vez.
+
+### Estilo do card 3D (16:9)
+
+Os mesmos sete looks do vertical (`prism`, `pill`, `keynote` dark/light, `studio`,
+`chrome`, `hud`) — `cardStyle` → `highlights.variant` + `tone`, tabela em
+`references/shortform.md` "Estilo do card 3D". No horizontal o tamanho vem da
+ALTURA do quadro e a largura máxima do card é 40%; o default de posição é
+`x 0.26, y 0.32` (lado vazio do falante — ajuste `x`/`y` por vídeo, nunca sobre o
+rosto). `chrome` é three.js: render com `--gl=angle` (o `render_phase2.py` já faz).
+
+### Headline, tela dividida e PiP (16:9)
+
+Tudo da aba Estilo existe nas duas trilhas; as chaves do `edit-data.json` são as
+do vertical, só a geometria muda.
+
+- **Headline** — `hook: {enabled, endSec, text, style: outline|card|realce|misto,
+  accent, logo, sign, side}`. `hook.enabled:false` = Nenhum. O texto é sempre
+  quebrado em DUAS linhas balanceadas; no horizontal o bloco ocupa ≤50% da
+  largura, canto superior esquerdo (`side: "left"|"center"|"right"`), porque o
+  falante costuma estar centro-direita — ajuste pelo lado vazio, nunca sobre o
+  rosto. Tamanhos são razões da altura do quadro (1080p == 4K).
+- **Tela dividida** (`split` / `split2`) — `splitInserts[]`, as mesmas chaves do
+  vertical, mas LADO A LADO: `layout: "top"` (id `split`, arte primeiro) = arte à
+  ESQUERDA; `layout: "bottom"` (id `split2`) = arte à DIREITA. O falante é o
+  `cut.mp4` reenquadrado: `zoom` (1.12), `focusX`/`focusY` (0..1 do source; 0.55 /
+  0.5), `bandW` (parcela da arte, 0.5). `flash: "flash"|"whip-pan"|"glitch"` no
+  item põe a transição de troca de layout na entrada e na saída.
+- **B-roll com apresentador (PiP)** — `broll[].pip: true` (ou `{x,y,w,zoom,focusX,
+  focusY}`): o cutaway cobre o quadro e o falante fica numa janela arredondada
+  (canto superior direito, ~26% da largura).
+- **Estilo (gate) → edit-data**: `split` → `splitInserts[]` com `layout:"top"`,
+  `split2` → `layout:"bottom"`, `broll` → `broll[]`, `pip` → `broll[]` com
+  `pip:true`. O PiP nunca existiu no template horizontal antes; não há projeto
+  salvo que dependa do significado antigo de `split2`.
+
+### Elementos do Estilo que o 16:9 constrói
+
+Os seis elementos da aba Estilo têm o mesmo efeito no `edit-data.json`
+horizontal — a tabela de mapeamento de `shortform.md` ("Workflow") vale para as
+duas trilhas. Diferenças de número, não de chave:
+
+| Elemento | Chave | 16:9 |
+|---|---|---|
+| `zoomCuts` | `camera.zooms[]` | **1.06–1.14** (9:16: 1.10–1.22 — num quadro largo o mesmo valor lê como um empurrão) |
+| `zoomAuto` | `camera.pushIn` | **0.03** por segmento (9:16: 0.04). Exige `public/segments.json` |
+| `tracking` | `camera.targetX/Y` + `track.json` | igual. OFF → `track.json` neutro `[[0.5,0.4]]` |
+| `flashCut` | `transitions[]` ou `broll[].flash` | flash/whip-pan/glitch; no horizontal o lugar natural é a ENTRADA e a SAÍDA de um cutaway de B-roll (`broll[].flash` escreve as duas) |
+| `glassPanel` | `highlights` `variant:"prism"` | placa de ~1/3 da largura (tamanho pela ALTURA do quadro), default `x 0.26 y 0.32` — ao lado do falante, nunca sobre o rosto. Ajuste `x`/`y` pelo lado vazio |
+| `springIn` | `broll[].enter:"spring"` | no horizontal vale para `broll[]` (não há `inserts[]`). OFF → omita `enter` |
+
+Dentro de uma janela `glass` ou `tracked` o quadro é desenhado pelo canvas e o
+zoom/tracking da câmera não se aplica ali — mesmo trade do vertical.
 
 Custo e regras idênticos ao vertical — ver `references/shortform.md` para as
 seções "Painel de vidro", "Transição com distorção" e "Camera solve 3D".

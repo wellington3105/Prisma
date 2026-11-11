@@ -1,0 +1,98 @@
+{
+ "words": 79,
+ "text": "hoje essa aqui por exemplo está com 40 mil km seria um carro de 279 mil acessível super acessível para quem tem um carro premium é coisa de louco né não é preço de carro chinês hein e aí só que você tem aquela questão você tem um carro produzido na alemanha encara 300 km por hora em vias sem limite de velocidade nenhuma hoje você pode rodar aqui com toda a segurança do mundo é eu falo assim",
+ "ranges": [
+  [
+   0.94,
+   13.54
+  ],
+  [
+   14.01,
+   15.71
+  ],
+  [
+   18.8,
+   20.133333
+  ],
+  [
+   20.436,
+   21.936
+  ],
+  [
+   22.24,
+   25.273333
+  ],
+  [
+   25.42,
+   26.32
+  ],
+  [
+   26.478,
+   28.778
+  ],
+  [
+   29.59,
+   34.156667
+  ]
+ ],
+ "jcut_leads": [
+  0,
+  2,
+  1,
+  2,
+  1,
+  4,
+  5,
+  2
+ ],
+ "jcut_frames": [
+  [
+   376,
+   376
+  ],
+  [
+   49,
+   49
+  ],
+  [
+   37,
+   37
+  ],
+  [
+   41,
+   41
+  ],
+  [
+   88,
+   88
+  ],
+  [
+   21,
+   21
+  ],
+  [
+   62,
+   62
+  ],
+  [
+   135,
+   135
+  ]
+ ],
+ "cut_s": 26.97,
+ "duration_ok": true,
+ "flags": 0,
+ "junctions": 7,
+ "range_levels": [
+  -1.4,
+  1.7,
+  -1.7,
+  2.4,
+  1.2,
+  0.0,
+  -0.2,
+  -2.2
+ ],
+ "lufs": -13.8,
+ "fps": 30
+}

@@ -89,6 +89,57 @@ If `uv` is missing: `brew install uv` (macOS), `winget install astral-sh.uv`
 (Windows), or the installer at https://docs.astral.sh/uv/. On Windows a
 `winget install` only reaches `$PATH` in a **new** PowerShell window.
 
+### GPU (NVIDIA) — optional, and NOT what `uv sync` gives you
+
+`uv sync` resolves **torch for CPU**. On a machine with an NVIDIA card the
+transcription still runs on CPU — `transcribe.py` now says so with a `⚠ GPU …
+SEM CUDA` line instead of falling back silently.
+
+Measured 2026-11-03 (Windows, RTX 5070, driver 621.01): the `.venv` had
+`torch 2.8.0+cpu` (`torch.cuda.is_available()` = False). CTranslate2 4.8.1 saw
+the card (`get_cuda_device_count()` = 1), but faster-whisper on CUDA failed with
+`cublas64_12.dll is not found` — the CUDA runtime libraries are missing as well.
+On CPU, faster-whisper alone took 29.5 s for 35 s of audio; the full WhisperX
+pass (load + transcribe + align) 49–86 s.
+
+To use the card, the torch build has to come from PyTorch's CUDA index. RTX 50
+series (Blackwell) needs CUDA **12.8** wheels or newer. Ask before installing:
+it is several GB, and a later `uv sync` puts the CPU build back.
+
+The command that worked (torchvision too — it is pinned to the same build, and
+`--no-deps` keeps uv from touching the rest of the env):
+
+```bash
+uv pip install --python <PRISMA>/.venv/Scripts/python.exe --no-deps \
+  --reinstall-package torch --reinstall-package torchaudio --reinstall-package torchvision \
+  "torch==2.8.0+cu128" "torchaudio==2.8.0+cu128" "torchvision==0.23.0+cu128" \
+  --extra-index-url https://download.pytorch.org/whl/cu128 --index-strategy unsafe-best-match
+```
+
+**Verified 2026-11-03** (RTX 5070, sm_120, driver 621.01): `torch.cuda.is_available()`
+= True, `transcribe.py` reports `whisperx on cuda/float16` with no `⚠ GPU` line,
+and the cuBLAS DLLs come with the torch wheel (the `cublas64_12.dll` error is gone).
+Same model (`large-v3`), same 35 s fixture:
+
+| | CPU int8 | GPU float16 |
+|---|---|---|
+| ASR (Whisper) | 25.9 s | **3.1 s** (8.4×) |
+| alignment (wav2vec2) | 10.5 s | 5.7 s |
+| `transcribe.py` total | 51–53 s | **23 s** (2.2×; model loading is a fixed ~14 s) |
+
+The speed-up grows with length: the fixed cost stays, the ASR part shrinks 8×.
+
+**`refine_edges.py` stays on CPU/int8 on purpose.** On GPU the regression failed
+on one edge (range 01 lost 0.6 s of voice) — not a GPU bug: float16, float32 and
+CUDA int8 all agree, only CPU int8 differs, and the edge rule cut in a 40 ms gap
+between syllables. Until that rule is fixed (D10 in `PLANO-FLUXO-EDICAO.md`)
+refine keeps the validated path; it is the slow step now (~110 s on the fixture).
+
+The `torchcodec is not installed correctly` warning at import is harmless here:
+its DLLs need FFmpeg *shared* libraries, and WhisperX hands pyannote audio already
+decoded in memory, so torchcodec is never used. A later `uv sync` reverts to the
+CPU build — run the command above again.
+
 ### ffmpeg
 
 ```bash

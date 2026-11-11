@@ -29,3 +29,15 @@ SOFTWARE.
 Files in this project derived from OpenShorts — see CREDITS.md for the
 per-file mapping to the original source path.
 --------------------------------------------------------------------------
+HyperFrames Studio (https://github.com/heygen-com/hyperframes,
+package @hyperframes/studio 0.8.91)
+License: Apache License, Version 2.0
+Copyright HeyGen
+
+The preview timeline adapts design values (colours, sizes, radii, the
+playhead and ruler geometry, the caption colour cycle) from HyperFrames
+Studio. Licensed under the Apache License, Version 2.0; you may obtain a copy
+at http://www.apache.org/licenses/LICENSE-2.0. Distributed on an "AS IS"
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND. Modified for Prisma —
+see CREDITS.md for what was taken and where it lives.
+--------------------------------------------------------------------------

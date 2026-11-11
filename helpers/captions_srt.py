@@ -10,6 +10,10 @@ Grouping: word-level times → readable cues.
   - break on sentence punctuation, on a silence gap, at the line/char cap, or
     at the max cue duration
   - min ~1.0s / max ~6.0s per cue; sentence case preserved (Whisper casing)
+  - no orphan cues: a cue shorter than 1 s with <= 2 words is merged into the
+    previous one when they are contiguous (< 0.3 s) and the result still fits
+    (a cue that closes a sentence on its own, like "Sim.", stays alone)
+  - reads the reviewed transcript (revise_transcript.py) when it exists; --raw opts out
 
 Usage:
     python helpers/captions_srt.py --transcript <edit>/transcripts/cut.json -o <edit>/captions.srt
@@ -32,10 +36,15 @@ import argparse
 import json
 from pathlib import Path
 
+from revise_transcript import resolve_transcript
 
-def load_words(transcript: Path | None, captions: Path | None) -> list[dict]:
-    """Return [{text, start, end}] in seconds, from a transcript or a captions.json."""
+
+def load_words(transcript: Path | None, captions: Path | None,
+               use_revised: bool = True) -> list[dict]:
+    """Return [{text, start, end}] in seconds, from a transcript or a captions.json.
+    A transcript is read from its reviewed copy (transcripts/.revised/) when there is one."""
     if transcript:
+        transcript = resolve_transcript(transcript, use_revised)
         raw = json.loads(transcript.read_text(encoding="utf-8")).get("words", [])
         out = []
         for w in raw:
@@ -54,6 +63,8 @@ def load_words(transcript: Path | None, captions: Path | None) -> list[dict]:
 
 
 ENDERS = ".!?…"
+ORPHAN_GAP = 0.3     # s between cues for them to count as contiguous
+ORPHAN_SLACK = 6     # chars a merged cue may exceed max_chars*max_lines by
 
 
 def group_cues(words: list[dict], max_chars: int, max_lines: int,
@@ -67,7 +78,8 @@ def group_cues(words: list[dict], max_chars: int, max_lines: int,
         text = " ".join(w["text"] for w in cur)
         start = cur[0]["start"]
         end = max(cur[-1]["end"], start + min_dur)
-        cues.append({"start": start, "end": end, "text": text})
+        cues.append({"start": start, "end": end, "text": text,
+                     "raw_end": cur[-1]["end"], "n": len(cur)})
         cur.clear()
 
     cap = max_chars * max_lines
@@ -84,6 +96,23 @@ def group_cues(words: list[dict], max_chars: int, max_lines: int,
         if ends_sentence or too_long or too_far or over_time or gap_next >= gap:
             flush()
     flush()
+
+    # merge orphans (a stray word or two) back into the cue before them
+    merged: list[dict] = []
+    for c in cues:
+        prev = merged[-1] if merged else None
+        if (prev and c["n"] <= 2 and c["raw_end"] - c["start"] < 1.0
+                and c["start"] - prev["raw_end"] < ORPHAN_GAP
+                and prev["text"][-1:] not in ENDERS
+                and len(prev["text"]) + 1 + len(c["text"]) <= cap + ORPHAN_SLACK
+                and c["raw_end"] - prev["start"] <= max_dur):
+            prev["text"] += " " + c["text"]
+            prev["raw_end"] = c["raw_end"]
+            prev["n"] += c["n"]
+            prev["end"] = max(c["raw_end"], prev["start"] + min_dur)
+        else:
+            merged.append(c)
+    cues = merged
 
     # keep cues from overlapping (clamp each end to the next start)
     for i in range(len(cues) - 1):
@@ -128,12 +157,14 @@ def main() -> None:
     ap.add_argument("--max-dur", type=float, default=6.0)
     ap.add_argument("--min-dur", type=float, default=1.0)
     ap.add_argument("--gap", type=float, default=0.7, help="silence gap (s) that forces a cue break")
+    ap.add_argument("--raw", action="store_true",
+                    help="ignore the transcript review (transcripts/.revised/) and use the raw text")
     args = ap.parse_args()
 
     if not args.transcript and not args.captions:
         ap.error("provide --transcript <cut.json> or --captions <captions.json>")
 
-    words = load_words(args.transcript, args.captions)
+    words = load_words(args.transcript, args.captions, not args.raw)
     if not words:
         raise SystemExit("no words found in input")
     cues = group_cues(words, args.max_chars, args.max_lines, args.max_dur, args.min_dur, args.gap)

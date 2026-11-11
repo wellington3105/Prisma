@@ -1,0 +1,409 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TIMELINE — HyperFrames Studio skin (Etapa 1 do PLANO-TIMELINE.md)
+   Geometry, density and colours adapted from @hyperframes/studio 0.8.91
+   (Apache-2.0, © HeyGen — see NOTICE). Values and their sources are in
+   references/_hf-studio-inventory.md §4. Scoped to the editor column (toolbar +
+   timeline): the rest of the app keeps the Prisma chrome.
+   Loaded AFTER app.css and overrides it by cascade — drop the <link> to roll back.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --tl-shell: #0a0a0b;
+  --tl-row: #101014;
+  --tl-gutter: #0e0f12;
+  --tl-accent: #3ce6ac;
+  --tl-accent-glow: rgba(60, 230, 172, 0.5);
+  --tl-text: rgba(255, 255, 255, 0.92);
+  --tl-text-2: rgba(255, 255, 255, 0.62);
+  --tl-tick: rgba(255, 255, 255, 0.34);
+  --tl-row-line: rgba(255, 255, 255, 0.06);
+  --tl-violet: 167, 139, 250;
+  --tl-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --tl-sans: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  --tl-head: 188px;      /* Studio uses 232px; the Prisma column shares space with the player */
+  --tl-row-h: 48px;
+}
+body.portrait { --tl-head: 136px; }
+
+/* ---- toolbar (was the glass transport) ---- */
+.transport {
+  background: var(--tl-shell);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 3px 8px;
+  gap: 2px;
+  min-height: 38px;
+  font-family: var(--tl-sans);
+  /* the toolbar belongs to the timeline, so it spans the same width */
+  width: 100%;
+  align-self: stretch;
+}
+.transport .btn.icon {
+  width: 28px; height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #a3a3a3;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.12s ease-out, color 0.12s ease-out, transform 0.12s ease-out;
+}
+.transport .btn.icon:hover { background: rgba(255, 255, 255, 0.06); color: #f5f5f5; }
+.transport .btn.icon:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.08); }
+.transport .btn.icon svg { width: 16px; height: 16px; fill: currentColor; }
+.transport .time { font-family: var(--tl-mono); font-size: 11.5px; color: var(--tl-text); margin-left: 6px; }
+.transport .time.dim { color: var(--tl-tick); margin-left: 0; }
+.transport .btn.mark {
+  height: 28px; padding: 0 10px; border-radius: 6px; font-size: 11px;
+  font-family: var(--tl-sans); margin-left: 8px;
+}
+.transport input[type="range"] {
+  width: 96px; height: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 2px;
+}
+.transport input[type="range"]::-webkit-slider-thumb {
+  width: 11px; height: 11px;
+  background: #e8edf4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.zoom-read {
+  font-family: var(--tl-mono);
+  font-size: 11px;
+  color: var(--tl-text-2);
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- panel + rows ---- */
+.timeline-panel {
+  background: var(--tl-shell);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  backdrop-filter: none;
+  padding: 0 0 12px 0;
+  font-family: var(--tl-sans);
+}
+.timeline-panel::-webkit-scrollbar-thumb:hover { background: rgba(60, 230, 172, 0.45); background-clip: padding-box; }
+
+.track { margin-bottom: 0; border-bottom: 1px solid var(--tl-row-line); }
+.track-label {
+  flex: 0 0 var(--tl-head);
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  min-width: 0;
+}
+/* the mask is now the header column itself, painted in the gutter colour */
+.track-label::before { top: 0; bottom: -1px; background: var(--tl-gutter); }
+.ruler-track .track-label::before { bottom: 0; background: var(--tl-shell); }
+.gutter-line { top: 0; bottom: 0; width: var(--tl-head); }
+
+/* icons lose their card: Studio headers are glyph + name + count on one line */
+.tl-chip {
+  width: 18px; height: 18px;
+  flex: 0 0 18px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--tl-text-2);
+}
+.tl-chip svg { width: 14px; height: 14px; }
+.tl-chip.teal, .tl-chip.orange { color: var(--tl-text-2); background: none; border: none; }
+.tl-chip.olive { color: rgb(var(--tl-violet)); background: none; border: none; }
+.tl-chip.notes { color: #ff6b81; background: none; border: none; }
+.tl-chip.disclose:hover, .tl-chip.disclose[aria-expanded='true'] { background: rgba(var(--tl-violet), 0.16); }
+.tl-name {
+  position: relative; /* above the ::before mask */
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tl-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tl-count {
+  position: relative;
+  margin-left: auto;
+  font-family: var(--tl-mono);
+  font-size: 10px;
+  color: var(--tl-tick);
+}
+.tl-count:empty { display: none; }
+
+.lane {
+  height: var(--tl-row-h);
+  background: var(--tl-row);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.lane.tall { height: 56px; }
+.notes-lane { height: 32px; background: rgba(255, 84, 112, 0.035); border: none; }
+.jcut-track .lane.jcut-lane { height: 28px; }
+
+/* ruler: 24px, sticky; labels and ticks are drawn on the canvas */
+.ruler-track {
+  margin-bottom: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  position: sticky;
+  top: 0;
+  z-index: 70;
+  background: var(--tl-shell);
+}
+.ruler-lane { height: 24px; background: var(--tl-shell); }
+
+/* ---- clips ---- */
+.clip {
+  top: 3px; bottom: 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 6px rgb(0 0 0 / 0.3);
+  cursor: default;
+  z-index: 1;
+  transition: background 0.12s ease-out, border-color 0.12s ease-out;
+}
+.clip:hover {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 6px rgb(0 0 0 / 0.3);
+  z-index: 5;
+}
+.clip.selected {
+  outline: 1.5px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -1.5px;
+  box-shadow: inset 0 0 0 2.5px rgba(255, 255, 255, 0.12), 0 2px 6px rgb(0 0 0 / 0.3);
+  z-index: 10;
+}
+/* edited but not yet rendered: the Studio's "active" fill */
+.clip.dirty { border: 1px dashed rgba(60, 230, 172, 0.75); background: rgba(60, 230, 172, 0.2); }
+.clip .thumbs img { opacity: 0.7; }
+.clip .clip-label {
+  top: 5px; left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(15, 22, 18, 0.73);
+  font-family: var(--tl-sans);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0;
+  color: var(--tl-text);
+  text-shadow: none;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clip .clip-dur {
+  right: 6px; bottom: 3px;
+  font-family: var(--tl-mono);
+  font-size: 9px;
+  color: var(--tl-text-2);
+}
+/* trim handles: 14px hit zone, 2px bar that fades in by state */
+.clip .handle { width: 14px; border: none !important; }
+.clip .handle::after {
+  content: '';
+  position: absolute;
+  top: 7px; bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.clip .handle.l::after { left: 3px; }
+.clip .handle.r::after { right: 3px; }
+.clip:hover .handle::after { opacity: 0.76; }
+.clip.selected .handle::after { opacity: 0.82; }
+.clip .handle:hover::after { opacity: 0.95; }
+.clip.removed { opacity: 0.3; }
+
+/* ---- overlay chips: neutral clips, like the Studio's visual zone ---- */
+.chip {
+  top: 3px; bottom: 3px;
+  border-radius: 8px;
+  font-family: var(--tl-sans);
+  font-size: 10px;
+}
+.chip.insert, .chip.insert.hook {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--tl-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 6px rgb(0 0 0 / 0.3);
+}
+.chip.insert:hover { background: rgba(255, 255, 255, 0.16); }
+.chip.insert.dirty { border: 1px dashed rgba(60, 230, 172, 0.75); background: rgba(60, 230, 172, 0.2); }
+/* captions: one solid colour per line (--cap set in JS), black 9px label */
+.chip.caption {
+  top: 8px; bottom: 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--cap, #3ce6ac);
+  color: #000;
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.88;
+}
+/* audio clips: violet pills */
+.chip.music, .chip.music.sfx {
+  background: rgba(var(--tl-violet), 0.16);
+  border: 1px solid rgba(var(--tl-violet), 0.4);
+  border-radius: 21px;
+  color: rgba(245, 237, 255, 0.92);
+}
+.chip.music.dirty { border: 1px dashed rgba(60, 230, 172, 0.75); }
+.music-opt.on { background: var(--tl-accent); color: #04140d; }
+.lvl-val.changed, .music-val.changed { color: var(--tl-accent); }
+.lvl-fader.dirty { border-color: rgba(60, 230, 172, 0.5); }
+
+/* J-cut blocks: small violet pills; the lead hatch in accent */
+.ablock {
+  top: 3px; bottom: 3px;
+  border-radius: 11px;
+  border: 1px solid rgba(var(--tl-violet), 0.4);
+  background: rgba(var(--tl-violet), 0.16);
+}
+.ablock-label {
+  color: rgba(245, 237, 255, 0.85);
+  font-family: var(--tl-sans);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+}
+.ablock-lead {
+  background: repeating-linear-gradient(-45deg, rgba(60, 230, 172, 0.42) 0 3px, rgba(60, 230, 172, 0.1) 3px 6px);
+  border-right: 1px solid rgba(60, 230, 172, 0.75);
+}
+
+.note-chip { border-radius: 8px; font-family: var(--tl-sans); font-size: 10px; }
+
+/* ---- playhead: 1px accent line, 6px glow, diamond head (filled while scrubbing) ---- */
+.needle {
+  border-left: 1px solid var(--tl-accent);
+  box-shadow: 0 0 6px var(--tl-accent-glow);
+  z-index: 80; /* above the sticky ruler */
+}
+.needle-head {
+  top: 7px;
+  left: -5.5px;
+  width: 9px; height: 9px;
+  clip-path: none;
+  background: var(--tl-shell);
+  border: 1.5px solid var(--tl-accent);
+  border-radius: 2px;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+  transition: background 0.12s ease-out;
+}
+.needle.scrub .needle-head { background: var(--tl-accent); }
+
+.tooltip { border-color: rgba(60, 230, 172, 0.5); font-family: var(--tl-mono); font-weight: 500; }
+.tooltip .delta { color: var(--tl-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .clip, .clip .handle::after, .needle-head, .transport .btn.icon { transition: none; }
+}
+
+
+/* ═══ Etapa 2 — direct editing (HyperFrames Studio interaction model) ═══ */
+.tb-sep { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.1); margin: 0 4px; flex: 0 0 1px; }
+.transport .btn.icon.on { background: rgba(255, 255, 255, 0.08); color: var(--tl-accent); }
+.transport .btn.icon:disabled { opacity: 0.35; cursor: default; background: transparent; }
+/* razor: a crosshair over anything cuttable, and a red guide under the pointer */
+.timeline-panel.razor .clip,
+.timeline-panel.razor .chip.caption { cursor: crosshair; }
+
+/* captions become editable blocks: selectable, draggable, trimmable */
+.chip.caption { pointer-events: auto; cursor: grab; overflow: visible; padding: 0 6px; }
+.chip.caption .cap-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.chip.caption:hover { opacity: 1; filter: brightness(1.08); }
+.chip.caption.selected,
+.chip.insert.selected {
+  outline: 1.5px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -1.5px;
+  opacity: 1;
+  z-index: 10;
+}
+.chip.caption .handle,
+.chip.insert .handle { width: 10px; z-index: 3; cursor: ew-resize; }
+.chip.caption .handle::after,
+.chip.insert .handle::after {
+  content: '';
+  position: absolute;
+  top: 3px; bottom: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.chip.insert .handle::after { background: #fff; }
+.chip .handle.l::after { left: 2px; }
+.chip .handle.r::after { right: 2px; }
+.chip:hover .handle::after, .chip.selected .handle::after { opacity: 0.8; }
+.chip.insert { cursor: grab; }
+.chip.insert.k-highlight { background: rgba(60, 230, 172, 0.14); border-color: rgba(60, 230, 172, 0.45); }
+
+/* in-place caption text editor */
+.cap-edit {
+  position: absolute;
+  top: 4px; bottom: 4px;
+  z-index: 40;
+  font: 600 11px var(--tl-sans);
+  color: #0a0a0b;
+  background: #fff;
+  border: 1.5px solid var(--tl-accent);
+  border-radius: 4px;
+  padding: 0 6px;
+  outline: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* snap guide (HyperFrames: accent + glow on the playhead, white otherwise) */
+.snap-guide {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  z-index: 85;
+  pointer-events: none;
+}
+.snap-guide.on-needle { border-left-color: var(--tl-accent); box-shadow: 0 0 6px var(--tl-accent-glow); }
+.snap-guide.hidden { display: none; }
+
+
+/* ═══ EDITOR tab — HyperFrames Studio embedded in Prisma ═══ */
+.editor-pane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100vh - 150px);
+  background: var(--tl-shell);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.editor-pane.hidden { display: none; }
+.editor-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--tl-sans);
+}
+.editor-title { font-size: 12px; font-weight: 600; color: var(--tl-accent); white-space: nowrap; }
+.editor-hint { font-size: 11px; color: var(--tl-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-bar .spacer { flex: 1; }
+.editor-frame { flex: 1 1 auto; width: 100%; border: 0; background: #0a0a0b; }
+.editor-frame.hidden { display: none; }
+.editor-msg {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; color: var(--tl-text-2); font-family: var(--tl-sans); font-size: 13px; text-align: center;
+  white-space: pre-line; padding: 24px;
+}
+.editor-msg.hidden { display: none; }
+.tab.tab-editor .tab-num { color: var(--tl-accent); }

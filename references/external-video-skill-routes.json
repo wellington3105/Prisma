@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "routes": [
+    {"id": 1, "slug": "video-use", "repo": "video-use", "primary": "SKILL.md"},
+    {"id": 2, "slug": "herk-edit-kit", "repo": "herk-edit-kit", "primary": ".claude/skills/video-storytelling/SKILL.md"},
+    {"id": 3, "slug": "ffmpeg-skill", "repo": "ffmpeg-skill", "primary": "SKILL.md"},
+    {"id": 4, "slug": "openchatcut", "repo": "OpenChatCut", "primary": "skills/openchatcut/SKILL.md"},
+    {"id": 7, "slug": "video-shotcraft", "repo": "video-shotcraft", "primary": "SKILL.md"},
+    {"id": 8, "slug": "motion-skills", "repo": "motion-skills", "primary": "README.md", "pack_catalog": true},
+    {"id": 9, "slug": "clipify", "repo": "clipify", "primary": "SKILL.md"},
+    {"id": 10, "slug": "claude-shorts", "repo": "claude-shorts", "primary": "SKILL.md"},
+    {"id": 11, "slug": "motion-graphics", "repo": "motion-graphics", "primary": "skills/motion-broll/SKILL.md"},
+    {"id": 12, "slug": "youtube-agent", "repo": "youtube-agent-skill", "primary": "skills/yt-plan/SKILL.md"},
+    {"id": 13, "slug": "claude-video-vision", "repo": "claude-video-vision", "primary": "skills/video-perception/SKILL.md"},
+    {"id": 14, "slug": "watch-video", "repo": "watch-video-skill", "primary": "SKILL.md"},
+    {"id": 15, "slug": "claude-watch", "repo": "claude-watch", "primary": "SKILL.md"},
+    {"id": 16, "slug": "omni-captions", "repo": "omni-captions-skills", "primary": "skills/omnicaptions-convert/SKILL.md"},
+    {"id": 17, "slug": "color-grade-ai", "repo": "color-grade-ai", "primary": "SKILL.md"},
+    {"id": 18, "slug": "elevenlabs", "repo": "elevenlabs-skills", "primary": "text-to-speech/SKILL.md"},
+    {"id": 19, "slug": "pexo", "repo": "pexo-skills", "primary": "skills/pexo-agent/SKILL.md"},
+    {"id": 20, "slug": "visual-skills", "repo": "visual-skills", "primary": "video/SKILL.md"},
+    {"id": 21, "slug": "video-toolkit", "repo": "claude-code-video-toolkit", "primary": "skills/openclaw-video-toolkit/SKILL.md"},
+    {"id": 22, "slug": "openmontage", "repo": "OpenMontage", "primary": ".claude/skills/create-video/SKILL.md"},
+    {"id": 24, "slug": "anthropic-skill-creator", "repo": "anthropic-skills", "primary": "skills/skill-creator/SKILL.md"},
+    {"id": 25, "slug": "ghost-editor", "repo": "ghost-editor", "primary": "SKILL.md"},
+    {"id": 26, "slug": "reelmimic", "repo": "reelmimic", "primary": "README.md"},
+    {"id": 27, "slug": "pixel2motion", "repo": "pixel2motion", "primary": "SKILL.md"}
+  ]
+}

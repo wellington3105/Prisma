@@ -54,12 +54,13 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica"` | `captions.style` in edit-data.json (+ the director step for stacked) |
 | `captions: "none"` | **no captions at all** — `captions.enabled: false`. Skip `captions_for_remotion.py` too; nothing reads the file |
 | `accent` (hex) | `hook.accent` + `captions.accent`. Only `realce`/`misto`/`stacked` paint it; `accentUsed:false` means the picked styles have none |
+| `cardStyle` | `highlights.variant` + `highlights.tone` — table in "Estilo do card 3D". Missing = `prism` |
 | `elements.tracking` | `face_track.py` + `track.json`; OFF → skip it, fixed frame |
 | `elements.zoomAuto` | the slow push-in inside each segment (`+0.04/segment`) |
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
 | `elements.flashCut` | `transitions[]` in edit-data.json — see "Flash na transição" |
 | `elements.shaderCut` | allows `displace`/`refract` in `transitions[]`. **OFF → only flash/whip-pan/glitch**, no canvas. See "Transição com distorção" |
-| `elements.glassPanel` | the `glass` block — refracting WebGL panel. **OFF → omit the block entirely**, no canvas is created. See "Painel de vidro" |
+| `elements.glassPanel` | **palavras em destaque numa moldura de vidro-prisma 3D** — `highlights` com `variant: "prism"` (GlassCard.tsx). NÃO é o bloco `glass` (retângulo vazio que só refrata o vídeo — reprovado). **OFF → omita `highlights`**. Ver "Painel de vidro (3D) = palavras na moldura prisma" |
 | `elements.springIn` | inserts get `enter:"spring"`. **OFF → omit `enter`**, which is the historical cubic ease and renders byte-identically |
 | `elements.brollFull` | permission to promote inserts to `fit:"cover"` — see "Inserts — card vs full frame". **OFF → every insert stays a card**, never write `fit` |
 | `elements.musicAI` | Phase 3 via `treblo_music.py`; OFF → deliver with voice only |
@@ -67,6 +68,32 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 
 An unchecked box is an explicit NO, not a silence. Copy the picks into
 `state.json` as `style`, clear `awaitingStyle`, delete `preview_style.json`.
+
+**Plano de inserts — o gate entre o Estilo e o edit-data (`inserts_plan.py`).**
+Whenever the video gets ≥1 insert, split image, B-roll or animated hook (style
+`limpa` with no inserts skips it): after the cut transcript exists (step 2 below)
+and BEFORE any insert is written into `edit-data.json`, write
+`<edit>/inserts_plan.json` with one item per insert — `i01…iNN`, time, format,
+**the concept in one sentence tied to what is being said**, the trigger word and
+its time, the camera intent — and a full **storyboard** (conceito, camadas,
+câmera, batidas, herói, vida, saída) for every item inside the hook. Then:
+1. `inserts_plan.py check <edit> --fix` — snaps edges that sit within 0.3 s of a
+   cut onto the cut time, flags < 2 s or > 12 s, a trigger outside its insert, a
+   hook item without storyboard, two same-format items overlapping;
+2. before showing it, re-read the hook asking: *does this concept come from THIS
+   line, or would it fit any video? does the energy match that moment? am I
+   repeating one formula (same entrance, same zoom, same impact)?*
+   (`references/motion-craft.md` for how each one moves);
+3. `inserts_plan.py show <edit>` → paste the numbered table into chat; the user
+   answers **by number** ("i04 tira", "i02 até 15s", "o resto ok") →
+   `strike` / `set` / `approve`;
+4. only when `show` says **aprovado**: `inserts_plan.py apply <edit>` writes
+   `inserts[]` / `splitInserts[]` with each `id`. It refuses an unapproved plan,
+   and refuses to drop edit-data items that are not in the plan without
+   `--replace`. The ids name the clips in the EDITOR (`split-i03`), so "i03" in
+   chat and in the Studio are the same thing.
+Changing a concept here costs one line; after the render it costs a round.
+(Adapted from `LeiteZ/fluxo-de-edicao`, motion-mapa stage, MIT.)
 
 1. **Scaffold (one command, never read the TSX):**
    ```bash
@@ -202,7 +229,10 @@ the historical card, so old `edit-data.json` files keep working.
   component picks `OffthreadVideo` or `Img` from the extension, and video
   inserts render muted — the cut owns the audio bed.
 
-- **`frame`** — `"glass"` desenha o insert **refratado através do painel de
+- **`frame`** — ⚠ medido em 2026-10-30 (projeto Volvo XC60): `"glass"` NÃO
+  desenha o insert dentro do vidro — o painel aparece refratando o vídeo de base
+  e o clipe some. Não use; para "palavra no vidro" use `highlights` prism.
+  Texto original: `"glass"` desenha o insert **refratado através do painel de
   vidro** em vez de como card chapado, na mesma posição (780×500 a 90px do
   topo). Exige `elements.glassPanel` marcado; ajuste fino em
   `glass: {intensity, dispersion, radius}`. Não combina com `fit`: o painel tem
@@ -435,7 +465,117 @@ Precisão alcançada: **22.9px de mediana** entre a posição renderizada e a
 projeção prevista. O resíduo é distorção radial da lente (k=0.17), que o Three
 não modela — suficiente para ancorar.
 
-### Painel de vidro (`elements.glassPanel`)
+### Rosto livre (safe_layout.py)
+
+Card, headline, bloco de legenda `stacked`/`scatter` e callout têm posição fixa no
+`edit-data.json`; quando o falante se mexe, eles passam em cima da cabeça. O
+`helpers/safe_layout.py` mede onde o rosto está a cada instante e põe cada overlay
+onde não o cobre (lógica de posicionamento portada do ghost-editor, MIT:
+abaixo do queixo -> acima da cabeça -> ao lado -> reduzido a 90%/80%, sempre dentro
+da área segura da plataforma).
+
+**Quando rodar:** DEPOIS de escrever o `edit-data.json` (highlights, hook, legenda),
+ANTES do render. O `render_phase2.py` já roda `--report` sozinho e imprime
+`[rosto] WARNING` para cada colisão; com `"safeLayout": "auto"` no edit-data ele
+aplica sozinho (backup `edit-data.before_safe_layout.<ts>.json`).
+
+```bash
+uv run python helpers/safe_layout.py <edit> --report                    # só relata
+uv run python helpers/safe_layout.py <edit> --apply [--platform all]    # reposiciona
+```
+
+- `--platform instagram|tiktok|shorts|youtube|all` (default `all`). 9:16: faixas de
+  UI da plataforma (topo ~14%, base ~20%, coluna de botões à direita só na metade
+  de baixo — medidas do ghost-editor); 16:9: margem de título de 5%.
+- Rosto: `remotion/public/faces.json` (>= 5 fps, caixa com cabelo e queixo; não leia
+  esse arquivo, é dado de máquina). Detector: YuNet se `helpers/models/face_detection_yunet_2023mar.onnx`
+  existir (`--fetch-model` baixa, MIT), senão OpenCV Haar frontal + perfil; caixas
+  fora de consenso são descartadas e as falhas curtas seguram a última posição.
+  Janelas cobertas por B-roll em tela cheia ou tela dividida são ignoradas (o
+  falante não está na tela). O zoom/tracking da `camera` entra na conta.
+- Move: `highlights.items[]` (x, y e `scale` 0.8–1), `hook` (`paddingTop`, `side` no
+  16:9), `callouts` (x, y), bloco `stacked`/`scatter` (`captions.side` no 16:9,
+  `stackedOffsetY`/`scatterOffsetY` no 9:16), e `focusX/focusY` de `splitInserts`.
+  Sem espaço único para o card na janela inteira, ele é DIVIDIDO em dois itens
+  (o rosto atravessou o quadro). lowerThirds/chapters só são avisados (sem chaves de posição).
+- **Título (`hook`) e callouts vivem no TOPO:** só trocam de lado na mesma faixa (o canto mais
+  distante do rosto primeiro) -> encolhem a 90% / 80% (`hook.scale`; ausente = 1) -> senão
+  NÃO se movem e o relatório diz `sem espaço no topo — use B-roll/plano aberto sob o título ou
+  encurte o texto`. Nunca abaixo do queixo nem na faixa do meio. Hook sobre B-roll em tela
+  cheia / tela dividida = OK, não mexe.
+- Item movido recebe `"autoPlaced": true`; **`"lockPos": true` nunca é movido** (só relatado).
+- `SEM ESPAÇO` = nenhuma posição livre (close-up): faça aquela janela em tela cheia
+  (B-roll) ou encurte o texto. O `--report` sai com código 1 se algo precisa de ajuste.
+- Limite honesto: o detector padrão (Haar) acha o rosto em ~64% das amostras brutas
+  (~40% consistentes) no CLA200; os buracos seguram a última posição. Com YuNet o
+  número sobe — rode `--fetch-model` uma vez.
+
+### Estilo do card 3D (`cardStyle` → `highlights.variant` + `tone`)
+
+A palavra em destaque tem sete looks, na linha "Estilo do card 3D" da aba Estilo
+(vale quando `elements.glassPanel` está marcado; **default `prism`**, que renderiza
+exatamente como antes). Existem nos DOIS templates, com as mesmas chaves
+(`items[]`: `text`, `label`, `at`, `dur`, `x`, `y`; tamanho pela altura/largura do
+quadro, sem px de retrato):
+
+| `cardStyle` | `highlights.variant` | `highlights.tone` | Look |
+|---|---|---|---|
+| `prism` | `prism` | — | placa de vidro-prisma 3D (o original) |
+| `pill` | `pill` | — | pílula 2D |
+| `keynote-dark` | `keynote` | `dark` | vidro fosco grafite, palavra enorme em peso leve (Inter), rótulo pequeno embaixo, um brilho que varre depois de assentar |
+| `keynote-light` | `keynote` | `light` | o mesmo em branco fosco |
+| `studio` | `studio` | — | painel preto fosco, barra laranja, leitura monoespaçada "RÓTULO · 01", régua de ticks; número rola até o valor, palavra "digita" |
+| `chrome` | `chrome` | — | a PALAVRA em metal extrudado de verdade (three.js, PBR + ambiente PMREM local). **Exige WebGL** — `render_phase2.py` detecta e passa `--gl=angle` sozinho; em render manual passe `--gl=angle` |
+| `hud` | `hud` | — | hologramas: colchetes ciano desenham, linha de varredura, o texto "decodifica" |
+
+Regras: um look por vídeo (não misture); `cardStyle` ausente = `prism`. Sem fonte
+da Apple, logos ou marcas em nenhum look (keynote usa Inter; studio, IBM Plex Mono;
+hud, JetBrains Mono — todas OFL via `@remotion/google-fonts`). O chrome usa as
+letras do Inter Bold convertidas para typeface do three (`src/fonts/inter-bold.typeface.json`,
+SIL OFL 1.1 — licença em `src/fonts/OFL-Inter.txt`). O SFX do destaque acompanha o
+look (`sfx_events.py`): prism/pill `glass_ping`, keynote `whoosh_air`, studio
+`click1/click2`, chrome `whip_hit` baixo, hud `caption-click`.
+
+### Painel de vidro (3D) = palavras na moldura prisma (`elements.glassPanel`)
+
+**Leia isto antes de tocar no vidro.** O usuário pediu várias vezes, e foi
+corrigido vídeo a vídeo em vez de aqui — por isso voltava errado: o checkbox
+"Painel de vidro (3D)" significa **a palavra-chave da fala numa moldura de
+vidro-prisma sofisticada**, não um retângulo de vidro vazio sobre o vídeo.
+
+```json
+"highlights": {
+  "enabled": true, "variant": "prism", "fontFamily": "Poppins", "offsetS": 0.8,
+  "items": [
+    {"text": "Híbrido T8", "label": "motor", "at": 10.2, "x": 0.5, "y": 0.34, "accent": "#ff5200"},
+    {"text": "462 cv", "label": "potência", "at": 14.6}
+  ]
+}
+```
+
+- **Como é** (`GlassCard.tsx`, variante `prism`, o padrão): placa fosca com
+  `backdrop-filter` (o fundo desfoca DE VERDADE atrás dela), espessura (a mesma
+  placa recuada em Z), perspectiva que gira devagar a vida inteira, aro
+  iridescente FINO em anel (máscara — sem ela o arco-íris vaza e a placa vira
+  adesivo), franja R/B de dispersão na sombra e no glifo, reflexo especular que
+  varre a placa na entrada e de novo no meio, rótulo com traço na cor `accent`.
+- **O que escrever:** `text` ≤16 caracteres, o TERMO, não a frase; `label` dá o
+  contexto ("motor", "potência", "preço"). Texto REFORÇA, não duplica: o card
+  entra `offsetS` (0.8s) depois da palavra, quando a legenda já passou.
+- **Cadência:** 1–3 por Reel de 30s; ≥3s na tela; nunca atravessando uma
+  transição (`transitions[]`) — termine antes do flash/whip.
+- **Onde:** centro-alto (`x 0.5, y 0.30–0.36`) sobre B-roll em tela cheia lê
+  melhor (vidro sobre o produto); sobre o rosto, desloque para o lado livre.
+- **Escolha dos termos:** `highlight_words.py` sugere candidatos (número, nome
+  próprio, substantivo longo); a decisão é editorial.
+- `variant: "pill"` mantém a etiqueta 2D antiga.
+
+**O bloco `glass` (refração WebGL de um retângulo) NÃO é este elemento.** Usado
+sozinho ele mostra um painel vazio refratando o rosto — reprovado.
+`render_phase2.py` avisa `REPROVADO` quando encontra `glass` sem `highlights`.
+A descrição técnica do bloco segue abaixo só como referência do shader.
+
+#### (referência técnica) bloco `glass` — refração WebGL
 
 A real refraction pass in WebGL — the footage behind the panel is displaced,
 not just blurred, and splits into R/G/B at the rim. `backdrop-filter` cannot do
@@ -781,9 +921,84 @@ licensing, prints license+author), then `google_images.py` (needs
 `GOOGLE_API_KEY`+`GOOGLE_CSE_ID`, mind rights — pass `--rights cc`, flag
 licensing to the user for logos/celebrities). Keep photographer credits.
 
-## Phase 3 — soundtrack (short-form)
+## Acabamento: VFX nos takes + motion HTML (HyperFrames)
 
-Ask: **AI-generated** (Treblo) or **local file** (copy to `public/trilha.mp3`).
+Pedido do usuário (2026-10-30): "não é só gráfico em HTML, são vários efeitos —
+analise as skills e insira onde cabe". O que entra, e onde:
+
+- **VFX nos takes de B-roll** — `film_look.py` em cada take ANTES de virar insert,
+  CONTIDO: externos de carro `{"bloom":.05,"halation":.05,"streaks":.25,"streak_threshold":.93,
+  "sweep":{"at":.4,"dur":1.8,"angle":24,"width":.2,"strength":.4},"curve":.2}` (reflexo
+  na pintura + flare dos faróis); interiores SEM film_look. A 1ª versão (bloom/halation .18,
+  curve .5) criou névoa cinza sobre o carro branco e estourou os faróis — reprovada.
+  Grade antes, preservando a cor original (ver color-multitake.md "Quando NÃO neutralizar").
+- **Motion HTML onde a fala traz um DADO ou um RECURSO** — cenas HyperFrames no
+  mesmo vidro-prisma das molduras: `helpers/hf_motion_scenes.py` (count, rank,
+  compare, awd, lane, shield, brand, chips). Antes de escrever uma cena nova,
+  procure no catálogo: `npx hyperframes catalog --query "<efeito em inglês>" --json`
+  (skill `hyperframes-registry`). Os blocos de luz do catálogo (`light-leak`,
+  `vfx-anamorphic-flare`) são cenas-demo 1920×1080, não overlays — para luz sobre
+  o carro o `film_look` é o caminho.
+- **Onde a placa fica** (`top=` em px, padrão 360 = terço superior). **Preferência,
+  não regra:** a placa vai onde não cobre o rosto de quem fala. Olhe o quadro
+  (`hyperframes snapshot --at <t>`) antes de fixar. Medido no PPF X6 (2026-11-03),
+  1080×1920 com legenda `scatter` em ~0,72 da altura: sobre B-roll, 360; plano
+  médio com a cabeça baixa no quadro, **acima da cabeça** (~110); plano americano
+  com o rosto no alto, **no peito** (~830, a placa termina antes da legenda).
+  **Quando não há espaço** (close, ou cabeça no topo e legenda no peito), cobrir o
+  rosto é aceitável: prefira encaixar a cena num B-roll vizinho; se não houver,
+  mantenha a placa curta (≤3 s), numa frase em que a expressão não carrega o
+  sentido, e diga ao usuário qual cena cobre o rosto e por quê.
+- **Montagem**: projeto `hf/` por vídeo — `assets/base.mp4` = render do Remotion,
+  cenas em `compositions/`, `index.html` de `hf_motion_scenes.index_html()`;
+  `npx hyperframes check --json` (0 erros) → `npx hyperframes render -o hf/out.mp4
+  --fps 30 --crf 14` → `deliver_mix.py <edit> --picture hf/out.mp4 --tone-ref
+  hf/assets/base.mp4 --tone-times <tempos sem cena>`.
+- **Duas armadilhas MEDIDAS (XC60):**
+  1. o render do Remotion vem yuvj420p/pc marcado **bt470bg**; o Chrome do HyperFrames
+     lê a matriz ao pé da letra e escurece. Gere `base.mp4` com a MESMA conversão da
+     entrega: `scale=in_range=full:out_range=limited,format=yuv420p,setparams=…bt709…:range=tv`,
+     `-g 30` (keyframe a cada 1s, senão o seek congela).
+  2. mesmo assim o render do HyperFrames sai ~2–3% mais escuro, neutro nos 3 canais
+     (hf ≈ 0,98·base − 1). `deliver_mix --tone-ref` mede e aplica a inversa só no Y.
+     Sem isso o tom que o usuário aprovou muda na última etapa.
+- `check` acusa `text_not_painted` quando um degradê com `background-clip:text` é
+  aplicado a um texto cujas letras são `inline-block` — as letras somem. O brilho
+  correndo vai numa SEGUNDA camada do mesmo texto (ver `brand()`).
+
+
+**Entrega com mixagem de verdade → `deliver_mix.py` (rode DEPOIS de `render_phase2.py`).**
+A entrega do render_phase2 re-mixa a voz crua, a trilha num volume fixo e só os
+cliques de transição. Medido no projeto Volvo XC60 (2026-10-30, gravação dentro
+de carro): voz com 8,5 dB entre fala e ruído e agudos 10–14 dB abaixo dos graves;
+trilha 33 dB abaixo da voz (inaudível); SFX que somem no celular. O helper:
+
+- **Voz** (`edit-data.json` `audio.voiceChain`): `noisy` = afftdn → highpass 110 →
+  −5 dB @240 → +5 dB @3 kHz → +4 dB shelf 7 kHz → expansor → compressor 3:1 →
+  de-esser → limiter (fala/ruído na pausa 8,5 → 27 dB); `clean` = só EQ +
+  compressor. A latência da cadeia é MEDIDA e compensada (afftdn ≈ 30 ms).
+- **Trilha** (`soundtrack.raw` = a faixa SEM carve, `offset` em s): ducking em duas
+  camadas com a voz tratada como chave (banda 250–2200 Hz ratio 3, espectro
+  inteiro ratio 1.6) e volume CALIBRADO por loudness integrado (LUFS, faixa
+  inteira): `musicBelowVoice` 9 LU antes do ducking → ~15 LU abaixo da fala no
+  resultado; grave da trilha −3 dB < 140 Hz. A v1 calibrava só a banda da voz e
+  deixou a trilha só 5,6 LU abaixo no conjunto e mais alta que a voz nos graves —
+  reprovada ("música alta, as vozes têm que aparecer mais"). Use `beat_map.py` e escolha o `offset`
+  que põe o drop no primeiro corte de B-roll.
+- **SFX** — regras de posicionamento em `references/sfx-craft.md` (o `at` é o
+  início do arquivo: desconte o tempo até o pico). (`sfxCues` [{src, at, volume}] + `transitions[].sfx`): prefira o kit
+  "audível no celular" do `sfx_synth.py` — `impact` (abertura/drop), `glass_ping`
+  (entrada de cada moldura prisma), `whoosh_air`, `whip_hit` (whip-pan),
+  `riser_tonal` (termina na batida). `sub_drop` e `ui_tick` sozinhos somem no
+  alto-falante do celular. Os .wav também estão em `public/sfx` do template.
+- loudnorm −14 LUFS / −1 dBTP em duas passadas. `--stems` grava voz/trilha/sfx
+  separados — confira com números (trilha ≈ 15 LU abaixo da voz em `ebur128`, sync ≈ 33 ms).
+
+
+Ask: **AI-generated** (Treblo), **Epidemic Sound catalog** (licensed, with stems
+and an exact-length edit — `epidemic_music.py`, workflow in
+`references/soundtrack.md` "Catálogo licenciado") or **local file** (copy to
+`public/trilha.mp3`).
 
 **Writing the Treblo prompt — derive it from the video's context, and ask for
 MUSIC, not a texture.** Read the cut transcript: what's the topic, energy and
@@ -962,7 +1177,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental) · **`epidemic_music.py`** (Epidemic Sound catalog via its MCP: `search` → `fit` to the cut's length or `download` full/stem; `sfx` / `sfx-download`).
 
 ---
 
@@ -978,6 +1193,12 @@ pelo caminho sem chave e diga o que muda.
 | `PEXELS_API_KEY` | imagens/vídeos ilustrativos | Wikimedia Commons cobre a maioria |
 | `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | marcas, pessoas e logos específicos | Wikimedia é o fallback |
 | `TREBLO_API_KEY` | trilha sonora composta por IA (Fase 3) | trilha só a partir de arquivo local |
+| `EPIDEMIC_SOUND_MCP_API_KEY` | trilha + SFX do catálogo Epidemic Sound (Fase 3; exige assinatura paga para baixar) | Treblo ou arquivo local |
+
+A chave do Epidemic é criada pelo próprio usuário em
+**https://www.epidemicsound.com/account/api-keys** (tipo *MCP Server*). Prefira a
+variável de ambiente do Windows (`setx`) — ela serve ao helper e ao MCP da sessão
+ao mesmo tempo; o `.env` só serve ao helper.
 
 ### Como o usuário cria a chave do Treblo (trilha com IA)
 

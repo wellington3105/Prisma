@@ -17,6 +17,9 @@ Caption shape (from @remotion/captions): { text, startMs, endMs, timestampMs, co
 Usage:
     python helpers/captions_for_remotion.py --transcript <edit>/transcripts/cut.json -o captions.json
     python helpers/captions_for_remotion.py <edl.json> -o captions.json
+
+Both modes prefer the reviewed transcript (revise_transcript.py ->
+transcripts/.revised/<same name>) when it exists; `--raw` opts out.
 """
 from __future__ import annotations
 
@@ -35,9 +38,13 @@ import argparse
 import json
 from pathlib import Path
 
+from revise_transcript import resolve_transcript
 
-def captions_from_transcript(transcript_path: Path) -> list[dict]:
-    """Words already on the output timeline (transcript of the final cut)."""
+
+def captions_from_transcript(transcript_path: Path, use_revised: bool = True) -> list[dict]:
+    """Words already on the output timeline (transcript of the final cut).
+    Uses the reviewed text (transcripts/.revised/) when it exists."""
+    transcript_path = resolve_transcript(transcript_path, use_revised)
     words = [w for w in json.loads(transcript_path.read_text(encoding="utf-8")).get("words", [])
              if w.get("type") == "word" and w.get("start") is not None]
     # Per-speaker styling only makes sense with 2+ distinct voices — a solo
@@ -67,7 +74,7 @@ def captions_from_transcript(transcript_path: Path) -> list[dict]:
     return caps
 
 
-def build_captions(edl: dict, edit_dir: Path) -> list[dict]:
+def build_captions(edl: dict, edit_dir: Path, use_revised: bool = True) -> list[dict]:
     transcripts_dir = edit_dir / "transcripts"
     sources = edl["sources"]
     caps: list[dict] = []
@@ -78,7 +85,7 @@ def build_captions(edl: dict, edit_dir: Path) -> list[dict]:
     # them — never a mix that would make the Remotion side special-case it.
     multi_speaker = False
     for r in edl["ranges"]:
-        tr_path = transcripts_dir / f"{r['source']}.json"
+        tr_path = resolve_transcript(transcripts_dir / f"{r['source']}.json", use_revised)
         if not tr_path.exists():
             continue
         ws = json.loads(tr_path.read_text(encoding="utf-8")).get("words", [])
@@ -90,7 +97,7 @@ def build_captions(edl: dict, edit_dir: Path) -> list[dict]:
         src = r["source"]
         a, b = float(r["start"]), float(r["end"])
         dur = b - a
-        tr_path = transcripts_dir / f"{src}.json"
+        tr_path = resolve_transcript(transcripts_dir / f"{src}.json", use_revised)
         if not tr_path.exists():
             off += dur
             continue
@@ -128,13 +135,15 @@ def main() -> None:
     ap.add_argument("--transcript", type=Path, default=None,
                     help="Transcript of the final cut.mp4 (preferred mode)")
     ap.add_argument("-o", "--output", type=Path, required=True, help="Output captions.json path")
+    ap.add_argument("--raw", action="store_true",
+                    help="ignore the transcript review (transcripts/.revised/) and caption the raw text")
     args = ap.parse_args()
 
     if args.transcript:
-        caps = captions_from_transcript(args.transcript.resolve())
+        caps = captions_from_transcript(args.transcript.resolve(), not args.raw)
     elif args.edl:
         edl_path = args.edl.resolve()
-        caps = build_captions(json.loads(edl_path.read_text(encoding="utf-8")), edl_path.parent)
+        caps = build_captions(json.loads(edl_path.read_text(encoding="utf-8")), edl_path.parent, not args.raw)
     else:
         ap.error("provide --transcript <cut.json> or an edl.json")
 

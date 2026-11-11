@@ -11,7 +11,7 @@ trail (~60ms) so the last letter/sibilant is never clipped.
 
 Usage:
     python helpers/speech_regions.py <video>
-    python helpers/speech_regions.py <video> --noise -33dB --min-silence 0.10
+    python helpers/speech_regions.py <video> --noise -33dB --min-silence 0.10  # fixed
     python helpers/speech_regions.py <video> --start 30 --end 40
 """
 from __future__ import annotations
@@ -33,11 +33,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from speech_level import analisar, filtro_de_ganho  # noqa: E402
 
-def detect_silences(video: Path, noise: str, min_silence: float) -> list[tuple[float, float]]:
+
+def detect_silences(video: Path, noise: str, min_silence: float,
+                    gain_db: float = 0.0) -> list[tuple[float, float]]:
+    pre = filtro_de_ganho(gain_db)
     cmd = [
         "ffmpeg", "-hide_banner", "-i", str(video),
-        "-af", f"silencedetect=noise={noise}:d={min_silence}",
+        "-af", f"{pre + ',' if pre else ''}silencedetect=noise={noise}:d={min_silence}",
         "-f", "null", "-",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -56,15 +61,24 @@ def detect_silences(video: Path, noise: str, min_silence: float) -> list[tuple[f
     return pairs
 
 
+def resolve_noise(video: Path, noise: str) -> tuple[str, float]:
+    """('auto' | '-NNdB') -> (limiar do silencedetect, ganho de analise em dB)."""
+    if str(noise).lower() != "auto":
+        return noise, 0.0
+    a = analisar(video)
+    return f"{a['limiar_db']}dB", a["ganho_db"]
+
+
 def speech_regions(video: Path, noise: str, min_silence: float,
                    min_speech: float = 0.15) -> list[tuple[float, float]]:
+    noise, gain = resolve_noise(video, noise)
     # total duration
     dur = float(subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=nokey=1:noprint_wrappers=1", str(video)],
         capture_output=True, text=True).stdout.strip() or 0.0)
 
-    silences = detect_silences(video, noise, min_silence)
+    silences = detect_silences(video, noise, min_silence, gain)
     # Build speech regions = gaps between silences
     regions: list[tuple[float, float]] = []
     cursor = 0.0
@@ -81,7 +95,9 @@ def speech_regions(video: Path, noise: str, min_silence: float,
 def main() -> None:
     ap = argparse.ArgumentParser(description="Print acoustic speech regions (silencedetect)")
     ap.add_argument("video", type=Path)
-    ap.add_argument("--noise", default="-33dB", help="silence threshold (default -33dB)")
+    ap.add_argument("--noise", default="auto",
+                    help="silence threshold: 'auto' (default; measured from the speaker level "
+                         "and noise floor, see speech_level.py) or explicit like -33dB")
     ap.add_argument("--min-silence", type=float, default=0.10, help="min silence seconds (default 0.10)")
     ap.add_argument("--min-speech", type=float, default=0.15, help="drop speech regions shorter than this")
     ap.add_argument("--start", type=float, default=0.0, help="only show regions overlapping [start,end]")
@@ -91,9 +107,11 @@ def main() -> None:
     if not args.video.exists():
         sys.exit(f"not found: {args.video}")
 
+    noise, gain = resolve_noise(args.video, args.noise)
     regions = speech_regions(args.video, args.noise, args.min_silence, args.min_speech)
     hi = args.end if args.end is not None else 1e9
-    print(f"speech regions (noise={args.noise}, min_silence={args.min_silence}s):")
+    print(f"speech regions (noise={noise}{' [auto]' if str(args.noise).lower() == 'auto' else ''}, "
+          f"analysis gain={gain:+.1f}dB, min_silence={args.min_silence}s):")
     for a, b in regions:
         if b < args.start or a > hi:
             continue

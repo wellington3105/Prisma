@@ -52,6 +52,19 @@ REMOTION_NAME = "remotion-best-practices"
 # one as a fallback so an older --ref still installs.
 REMOTION_SUBDIRS = ("skills/remotion-best-practices", "skills/remotion")
 
+# HyperFrames is the default Phase-2 engine (Remotion is the fallback). The CLI
+# itself needs no install - helpers run it as `npx hyperframes@<HF_PIN>` and
+# Node is already checked below - but the skills that teach an agent how to use
+# it live in a subdirectory of the upstream repo, same shape as Remotion.
+HYPERFRAMES_REPO = "heygen-com/hyperframes"
+HYPERFRAMES_SKILLS = ("hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use")
+
+# Aliases for the external video resources (prisma-ext-*, prisma-video-library)
+# ship inside this repo under skill-aliases/. Each SKILL.md names the Prisma
+# registry by absolute path, so the path is rewritten to the real install.
+ALIASES_DIR = "skill-aliases"
+ALIAS_PLACEHOLDER = r"C:\Users\welli\.claude\skills\prisma"
+
 # Every agent that reads Agent-Skills-style directories. Add a line to support
 # another one; the rest of the installer needs no change.
 AGENT_DIRS: list[tuple[str, Path]] = [
@@ -295,6 +308,10 @@ def main() -> None:
                     help="substituir mesmo que o destino seja um clone git")
     ap.add_argument("--no-remotion", action="store_true",
                     help="não instalar a skill do Remotion (só a Fase 1)")
+    ap.add_argument("--no-hyperframes", action="store_true",
+                    help="nao instalar as skills do HyperFrames (Fase 2 usara so Remotion)")
+    ap.add_argument("--no-aliases", action="store_true",
+                    help="nao instalar os aliases das skills externas (prisma-ext-*)")
     args = ap.parse_args()
 
     log("Prisma — instalação")
@@ -346,6 +363,38 @@ def main() -> None:
                         log(f"  ! Remotion falhou em {skills_dir}: {e}")
             else:
                 log("  ! skill do Remotion não instalada (a Fase 1 não depende dela)")
+
+        if not args.no_hyperframes:
+            hsrc = fetch_repo(HYPERFRAMES_REPO, "main", Path(tmp), "hyperframes")
+            if hsrc:
+                for _, skills_dir in targets:
+                    for nome in HYPERFRAMES_SKILLS:
+                        sub = hsrc / "skills" / nome
+                        if not sub.is_dir():
+                            log(f"  ! skill {nome} nao existe no upstream do HyperFrames")
+                            continue
+                        log(f"  instalando skill do HyperFrames: {skills_dir / nome}")
+                        try:
+                            install_into(sub, skills_dir, args.force, name=nome)
+                        except Exception as e:
+                            log(f"  ! {nome} falhou em {skills_dir}: {e}")
+            else:
+                log("  ! skills do HyperFrames nao instaladas (a Fase 2 cai no Remotion)")
+
+        aliases = src / ALIASES_DIR
+        if not args.no_aliases and aliases.is_dir():
+            for _, skills_dir in targets:
+                real = str(skills_dir / SKILL_NAME)
+                for a in sorted(p for p in aliases.iterdir() if p.is_dir()):
+                    try:
+                        d2 = install_into(a, skills_dir, args.force, name=a.name)
+                        md = (d2 or skills_dir / a.name) / "SKILL.md"
+                        if md.is_file():
+                            md.write_text(md.read_text(encoding="utf-8").replace(ALIAS_PLACEHOLDER, real),
+                                          encoding="utf-8")
+                    except Exception as e:
+                        log(f"  ! alias {a.name} falhou em {skills_dir}: {e}")
+            log(f"  aliases das skills externas instalados ({len(list(aliases.iterdir()))})")
 
     # Every destination needs its own .venv — helpers run as `uv run python …`
     # from whichever copy the agent loaded. Syncing only the first one left the
