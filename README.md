@@ -1,4 +1,13 @@
-# Prisma
+<p align="center">
+  <img src="assets/brand/banner.svg" alt="PRISMA" width="100%">
+</p>
+
+<p align="center">
+  <b>Editor de vídeo por conversa</b> — transcrição local, corte, cor, legendas, motion e trilha.<br>
+  <sub>Claude Code · Codex · Antigravity &nbsp;·&nbsp; HyperFrames + Remotion &nbsp;·&nbsp; sem chave de API</sub>
+</p>
+
+---
 
 Editor de vídeo por conversa. Você joga o material bruto numa pasta, abre seu
 agente ali dentro e diz *"edita isso num Reels"*. Ele transcreve, escolhe as
@@ -13,7 +22,7 @@ nenhum limite de tamanho.
 
 ## Instalacao
 
-Um comando. Ele instala as dependencias (uv, ffmpeg, Node) e a skill.
+Um comando. Ele instala a skill, as dependências Python (WhisperX etc.), as skills do HyperFrames e do Remotion e os aliases das skills externas (`skill-aliases/`). Os programas `uv`, `ffmpeg` e `node` ele só confere e avisa como instalar.
 
 **Windows — PowerShell**
 
@@ -51,7 +60,7 @@ São **dois comandos**: um para os programas que o Prisma usa, outro para o Pris
 - **`uv`** — gerenciador de pacotes Python. O Prisma usa para tudo, e ele também
   cuida de instalar o Python certo, então você não instala Python separado.
 - **`ffmpeg`** — corte, cor e render (Fase 1).
-- **`node`** — Remotion, usado nas legendas e gráficos (Fase 2).
+- **`node`** (18+) — roda o HyperFrames (motor padrão da Fase 2, via `npx`, versão fixada em `helpers/hfkit/project.py`) e o Remotion (fallback), nas legendas e gráficos.
 - **`git`** — o Prisma não usa. É útil para o Claude Code e para quem for
   desenvolver a skill; no Codex, não é requisito da edição.
 
