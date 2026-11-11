@@ -9,6 +9,7 @@ __pycache__/
 # (Pexels, Treblo, Postiz) vivem aqui e nunca no repositório.
 .env
 .env.*
+!.env.example
 
 # Saídas de render e artefatos de diagnóstico.
 out/
