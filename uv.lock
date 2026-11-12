@@ -2985,6 +2985,9 @@ animations = [
     { name = "manim", version = "0.19.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "manim", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+camera3d = [
+    { name = "pycolmap" },
+]
 cinematic = [
     { name = "pedalboard" },
     { name = "pyloudnorm" },
@@ -3018,6 +3021,7 @@ requires-dist = [
     { name = "pedalboard", marker = "extra == 'cinematic'" },
     { name = "pillow" },
     { name = "pyannote-audio", marker = "extra == 'diarize'" },
+    { name = "pycolmap", marker = "extra == 'camera3d'" },
     { name = "pyloudnorm", marker = "extra == 'cinematic'" },
     { name = "requests" },
     { name = "scenedetect" },
@@ -3030,7 +3034,7 @@ requires-dist = [
     { name = "whisperx" },
     { name = "yt-dlp" },
 ]
-provides-extras = ["animations", "matting", "scenes-neural", "diarize", "reframe", "parakeet", "cinematic"]
+provides-extras = ["animations", "matting", "scenes-neural", "diarize", "reframe", "parakeet", "cinematic", "camera3d"]
 
 [[package]]
 name = "propcache"
@@ -3274,6 +3278,29 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/21/3f477dc318dd4e84a5ae6301e67284199d7e5a2384f3063714041086b65d/pycairo-1.29.0-cp313-cp313-win32.whl", hash = "sha256:3eb382a4141591807073274522f7aecab9e8fa2f14feafd11ac03a13a58141d7", size = 750949, upload-time = "2025-11-11T19:12:12.198Z" },
     { url = "https://files.pythonhosted.org/packages/43/34/7d27a333c558d6ac16dbc12a35061d389735e99e494ee4effa4ec6d99bed/pycairo-1.29.0-cp313-cp313-win_amd64.whl", hash = "sha256:91114e4b3fbf4287c2b0788f83e1f566ce031bda49cf1c3c3c19c3e986e95c38", size = 844149, upload-time = "2025-11-11T19:12:19.171Z" },
     { url = "https://files.pythonhosted.org/packages/15/43/e782131e23df69e5c8e631a016ed84f94bbc4981bf6411079f57af730a23/pycairo-1.29.0-cp313-cp313-win_arm64.whl", hash = "sha256:09b7f69a5ff6881e151354ea092137b97b0b1f0b2ab4eb81c92a02cc4a08e335", size = 693595, upload-time = "2025-11-11T19:12:23.445Z" },
+]
+
+[[package]]
+name = "pycolmap"
+version = "4.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/64/0df767862af0df86021b9c3ab963c66359c9e3ff152c75be0c21d6c27ddf/pycolmap-4.2.1-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:a5e55b2f1bae79c0e3cefe47d56d1efff800cb25223d38ec0ef186b6670835c3", size = 20711589, upload-time = "2026-09-29T17:04:12.055Z" },
+    { url = "https://files.pythonhosted.org/packages/54/f7/4a76c54fdcb33cfff809f7718210d396a15c0cd01bcd4d3b0ef7f723c6cc/pycolmap-4.2.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:5fb7c4100af76efb077cd0da3c78b3e5289a70de6131da0d816ad45e2e69d007", size = 38174040, upload-time = "2026-09-29T17:04:16.672Z" },
+    { url = "https://files.pythonhosted.org/packages/23/2b/6d18a22d59f88c315fc993c93136ce3b675c0bc35ad09ff7dc19b1ccc5e4/pycolmap-4.2.1-cp310-cp310-win_amd64.whl", hash = "sha256:ec6642d8ec11bb1dfeb9b6ed552a650c248ceb8887a0e8825be42cac27cf38ca", size = 23957424, upload-time = "2026-09-29T17:04:19.901Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/87/0ea99959c82ad918e2f4bd4bc41b2f97d3d061a83b267a2e3b8477171e69/pycolmap-4.2.1-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:73204e55c75ab637231d4ca559153d658ec7eda9dec39a1aacad96fbc0300cb9", size = 20715097, upload-time = "2026-09-29T17:04:22.759Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/b3/a8427abf840e4455611d7be99a47ddf1aab68f96b874ee0706c7e6d128bc/pycolmap-4.2.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:7627f0bab5746d04d94f91fec0dcb4b8ae0d5592853ab7b549cbd7dd021dd90f", size = 38173037, upload-time = "2026-09-29T17:04:25.932Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/48/ca4793173198767e8e73757797346ac71e4a42d1ec5399cdf058cf5b4e22/pycolmap-4.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:9db2c0fef05cf0f9ac981a30c62a01d6bd9c67dab0fbe60a0045ff968180752e", size = 23960818, upload-time = "2026-09-29T17:04:28.727Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/1c/a3a80bb2a2b705b2e94074498fcd8a9de031f16a14fedaeb9a3628e7abb0/pycolmap-4.2.1-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:1cacb57103909bb0adec666b06122add8ea8024682d83fc5903145e01297f243", size = 20785309, upload-time = "2026-09-29T17:04:33.333Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/9a/a76e54e33730eceecb5da7eca38ad939cd6c69633339b3a53cf7299f7ea9/pycolmap-4.2.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:711cef7bd0d30326a5d75967043371c98667f24db305b8cd5cd19339d02a7073", size = 38191187, upload-time = "2026-09-29T17:04:38.813Z" },
+    { url = "https://files.pythonhosted.org/packages/80/ab/bc60b841c8be56354bfad1b4c7b1f9b15ba92e4f2285f394b3a5dbaa27c7/pycolmap-4.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:b6a562b33bcbf0757c7b28c33b9166e095fa5451f9a4b38236018cf8a8d49380", size = 23973043, upload-time = "2026-09-29T17:04:42.469Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/33/37c56b31f8678e12453f82f661f587d62c7d1dd14884a75afc2026194ac4/pycolmap-4.2.1-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:a9bcc24a5980f34293f899d5bff2c0abfe4e33d9a73c54b7d2c748c224d20659", size = 20785214, upload-time = "2026-09-29T17:04:46.01Z" },
+    { url = "https://files.pythonhosted.org/packages/93/e0/80777090908de12600f6179cde9f52e246e07fa6223a2efe1d890a2ae69a/pycolmap-4.2.1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:e5cc476b6cf787b49b644b802a1790db3cb074039e903eb91197740e60f296c9", size = 38190144, upload-time = "2026-09-29T17:04:50.373Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/bb/f3c05e127281989ca7bb792a1acdbe788757d8cf2b029caad14288c001b4/pycolmap-4.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:2aa586acd21154ed92c1d674d5da9b1b05e1dd9e2156627caf0ae42278423f02", size = 23974670, upload-time = "2026-09-29T17:04:54.394Z" },
 ]
 
 [[package]]
