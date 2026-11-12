@@ -62,6 +62,9 @@ parakeet = ["sherpa-onnx"]
 # de sala. O separador de voz (audio-separator) NAO entra aqui: exige Python 3.11 num
 # ambiente proprio (ver ~/Prisma-Suite/ECOSYSTEM.md).
 cinematic = ["pyloudnorm", "pedalboard"]
+# Camera 3D (camera_solve_colmap.py): estrutura a partir de movimento. Estava instalado
+# a mao e fora do lock — quem clonava tinha ImportError.
+camera3d = ["pycolmap"]
 
 # The one-command installer: `uvx --from git+<repo> prisma-install`, or plain
 # `uvx prisma-install` once this is on PyPI. Stdlib-only, so it runs before any

@@ -11,7 +11,41 @@ from pathlib import Path
 
 
 ROUTES_FILE = Path(__file__).resolve().parents[1] / "references" / "external-video-skill-routes.json"
-MANIFEST_FILE = Path.home() / ".aiox-global" / "vendor" / "prisma-video-skills" / "manifest.json"
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _library_candidates() -> list[Path]:
+    """Where the 24 external resources may live, in priority order.
+
+    1. PRISMA_VIDEO_LIB (directory that holds manifest.json);
+    2. the Prisma-Suite this copy belongs to: `<suite>/core` (submodule) or the path the
+       suite installer recorded in `<skill>/.prisma-suite`;
+    3. ~/Prisma-Suite (default suite location);
+    4. the legacy vault, ~/.aiox-global/vendor/prisma-video-skills.
+    """
+    import os
+    out = []
+    if os.environ.get("PRISMA_VIDEO_LIB"):
+        out.append(Path(os.environ["PRISMA_VIDEO_LIB"]))
+    out.append(SKILL_ROOT.parent / "external" / "prisma-video-skills")
+    marker = SKILL_ROOT / ".prisma-suite"
+    if marker.is_file():
+        out.append(Path(marker.read_text(encoding="utf-8").strip()) / "external" / "prisma-video-skills")
+    out.append(Path.home() / "Prisma-Suite" / "external" / "prisma-video-skills")
+    out.append(Path.home() / ".aiox-global" / "vendor" / "prisma-video-skills")
+    return out
+
+
+def _manifest_file() -> Path:
+    for lib in _library_candidates():
+        if (lib / "manifest.json").is_file():
+            return lib / "manifest.json"
+    tried = "\n  ".join(str(p) for p in _library_candidates())
+    raise SystemExit(f"Biblioteca externa nao encontrada. Procurado em:\n  {tried}\n"
+                     "Clone o Prisma-Suite com --recurse-submodules ou defina PRISMA_VIDEO_LIB.")
+
+
+MANIFEST_FILE = _manifest_file()
 
 
 class CatalogError(Exception):
@@ -39,9 +73,9 @@ def load_catalog() -> tuple[dict, dict, dict]:
             if key in by_name:
                 raise CatalogError(f"Duplicate route: {key}")
             by_name[key] = route
-    root = Path(manifest["root"]).resolve()
-    if root != MANIFEST_FILE.parent.resolve():
-        raise CatalogError("Manifest root does not match its installed location")
+    # The manifest records the machine it was generated on; the library is portable, so the
+    # real root is where manifest.json was found. Integrity comes from the pinned commits.
+    root = MANIFEST_FILE.parent.resolve()
     return {"root": root, "routes": routes, "by_name": by_name}, items, packs
 
 
