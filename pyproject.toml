@@ -58,6 +58,10 @@ reframe = ["mediapipe"]
 # Opt-in with `uv sync --extra parakeet`; the default WhisperX install is
 # untouched. The int8 ONNX model is separate — see references/transcription.md.
 parakeet = ["sherpa-onnx"]
+# Trilha cinematografica (skill trilha-cinematografica): loudness por camada e reverb/EQ
+# de sala. O separador de voz (audio-separator) NAO entra aqui: exige Python 3.11 num
+# ambiente proprio (ver ~/Prisma-Suite/ECOSYSTEM.md).
+cinematic = ["pyloudnorm", "pedalboard"]
 
 # The one-command installer: `uvx --from git+<repo> prisma-install`, or plain
 # `uvx prisma-install` once this is on PyPI. Stdlib-only, so it runs before any
