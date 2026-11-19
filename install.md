@@ -104,7 +104,12 @@ pass (load + transcribe + align) 49–86 s.
 
 To use the card, the torch build has to come from PyTorch's CUDA index. RTX 50
 series (Blackwell) needs CUDA **12.8** wheels or newer. Ask before installing:
-it is several GB, and a later `uv sync` puts the CPU build back.
+it is several GB, and a later `uv sync` puts the CPU build back. **So does
+`uv run`**: it syncs the venv with `uv.lock` before running (seen 2026-11-19,
+which also put an older yt-dlp back, and YouTube then answered 403). On a GPU
+machine, call the venv's python directly (`.venv/Scripts/python.exe` on
+Windows, `.venv/bin/python` elsewhere, with `.venv/Scripts` on `PATH` so
+`ingest_url.py` finds the venv's yt-dlp), or use `uv run --no-sync`.
 
 The command that worked (torchvision too — it is pinned to the same build, and
 `--no-deps` keeps uv from touching the rest of the env):
