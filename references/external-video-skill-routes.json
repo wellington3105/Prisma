@@ -24,6 +24,12 @@
     {"id": 24, "slug": "anthropic-skill-creator", "repo": "anthropic-skills", "primary": "skills/skill-creator/SKILL.md"},
     {"id": 25, "slug": "ghost-editor", "repo": "ghost-editor", "primary": "SKILL.md"},
     {"id": 26, "slug": "reelmimic", "repo": "reelmimic", "primary": "README.md"},
-    {"id": 27, "slug": "pixel2motion", "repo": "pixel2motion", "primary": "SKILL.md"}
+    {"id": 27, "slug": "pixel2motion", "repo": "pixel2motion", "primary": "SKILL.md"},
+    {"id": 28, "slug": "supoclip", "repo": "supoclip", "primary": "README.md"},
+    {"id": 29, "slug": "autoclip-mvp", "repo": "autoclip_mvp", "primary": "README.md"},
+    {"id": 30, "slug": "viral-clips-crew", "repo": "viral-clips-crew", "primary": "README.md"},
+    {"id": 31, "slug": "autoclip-artbyjazi", "repo": "autoclip-artbyjazi", "primary": "README.md"},
+    {"id": 32, "slug": "shortcast", "repo": "shortcast", "primary": "README.md"},
+    {"id": 33, "slug": "clip-anything", "repo": "Clip-Anything", "primary": "README.md"}
   ]
 }
