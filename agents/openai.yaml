@@ -1,4 +1,4 @@
 interface:
   display_name: "Edvid"
   short_description: "Edite vídeos por conversa, do corte ao render final."
-  default_prompt: "Use $edvid para editar os vídeos desta pasta e me propor a estratégia de corte."
+  default_prompt: "Use $prisma para editar os vídeos desta pasta e me propor a estratégia de corte."
