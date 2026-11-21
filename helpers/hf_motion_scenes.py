@@ -58,6 +58,15 @@ tl.to(scrim,{opacity:0,duration:.34,ease:"power2.in"},D-.42);
 """
 
 
+
+def _eases_inline() -> str:
+    """The measured eases (hfkit/eases.py) as an inline <script>, loaded right after GSAP."""
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parent))
+    from hfkit.eases import script_inline
+    return script_inline()
+
 def _scene(cid: str, dur: float, body: str, css: str, js: str, top: int = 360, width: int = 860) -> str:
     base = BASE_CSS.replace("__TOP__", str(top)).replace("__W__", str(width)).replace("__A__", ACCENT)
     return f"""<!doctype html>
@@ -332,6 +341,7 @@ def index_html(dur: float, mounts: list[dict]) -> str:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    {_eases_inline()}
     <style>
       * {{ margin: 0; padding: 0; box-sizing: border-box; }}
       html, body {{ margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: #000; }}

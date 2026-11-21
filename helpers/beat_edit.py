@@ -72,6 +72,15 @@ HFJSON = {"$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
 T = 0.20  # each half of a transition (s): exit = last T of the outgoing shot, entrance = first T of the next
 
 
+
+def _eases_inline() -> str:
+    """The measured eases (hfkit/eases.py) as an inline <script>, loaded right after GSAP."""
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parent))
+    from hfkit.eases import script_inline
+    return script_inline()
+
 def f3(x: float) -> float:
     return round(x, 3)
 
@@ -404,6 +413,7 @@ def main() -> None:
     <meta charset="UTF-8">
     <meta name="viewport" content="width={W}, height={H}">
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    {_eases_inline()}
     <style>
       * {{ margin: 0; padding: 0; box-sizing: border-box; }}
       html, body {{ margin: 0; width: {W}px; height: {H}px; overflow: hidden; background: #000; }}

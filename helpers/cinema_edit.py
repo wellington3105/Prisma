@@ -63,6 +63,15 @@ HERE = Path(__file__).resolve().parent
 SR = 48000
 
 
+
+def _eases_inline() -> str:
+    """The measured eases (hfkit/eases.py) as an inline <script>, loaded right after GSAP."""
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parent))
+    from hfkit.eases import script_inline
+    return script_inline()
+
 def load_mod(name):
     spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -680,6 +689,7 @@ def main() -> None:
     <meta charset="UTF-8">
     <meta name="viewport" content="width={W}, height={H}">
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    {_eases_inline()}
     <style>
       * {{ margin: 0; padding: 0; box-sizing: border-box; }}
       html, body {{ margin: 0; width: {W}px; height: {H}px; overflow: hidden; background: #000; }}

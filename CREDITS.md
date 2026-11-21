@@ -72,3 +72,15 @@ brief, not their implementation:
 Keylight/Primatte-style keyers) from scratch; `composite.py` (light wrap,
 LAB colour transfer, grain match) and `beat_edit.py` (HyperFrames
 sub-compositions, GSAP transitions) are original Prisma code.
+
+## motionmaxxing (Tejashmakwana/motionmaxxing, Apache-2.0)
+
+Pinned at `8c8ec0f2a6f6c9a0da15cd24f7b1298ab298368c` (2026-10-06). Copyright Tejas Makwana.
+
+| Prisma file | From | Notes |
+|---|---|---|
+| [`assets/hyperframes/vendor/prisma-eases.js`](assets/hyperframes/vendor/prisma-eases.js) | `runtime/motion.js` lines 18-41 | The 12 measured eases, math verbatim, registered as named GSAP eases |
+| [`helpers/hfkit/eases.py`](helpers/hfkit/eases.py) | `runtime/motion.js` `EASE_FRAMES`, `references/motion.md` R1.1-R1.5 | Names, measured durations and role defaults on the Python side |
+| [`helpers/vendor/motionmaxxing/look.py`](helpers/vendor/motionmaxxing/look.py), [`lint.mjs`](helpers/vendor/motionmaxxing/lint.mjs), [`_cdp.mjs`](helpers/vendor/motionmaxxing/_cdp.mjs), [`slop.md`](helpers/vendor/motionmaxxing/slop.md) | `scripts/`, `references/slop.md` | Copied unchanged |
+| [`helpers/motion_gates.py`](helpers/motion_gates.py) | new | Prisma wrapper: `reels` profile, flattening of HyperFrames sub-compositions for the lint, model-year exemption |
+| [`references/motion-craft.md`](references/motion-craft.md) §2.1 | `references/motion.md` §1-§2 | Measured findings summarised in Portuguese |
