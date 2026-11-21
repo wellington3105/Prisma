@@ -74,6 +74,41 @@ Lembrete: no GSAP, `power1` = Quad, `power2` = Cubic, `power3` = Quart,
 > **Corrigidos em 2026-11-03 (D6)** com as mesmas equivalências desta tabela;
 > valem para os próximos vídeos, os entregues ficam como aprovados.
 
+### 2.1 Curvas medidas (motionmaxxing, 2026-11-21)
+
+Diferente da tabela acima, estas curvas **têm dado**: foram ajustadas à mediana de
+3.573 movimentos medidos quadro a quadro em 53 trechos de motion profissional
+(`motionmaxxing`, Apache-2.0, `helpers/vendor/motionmaxxing/PROVENANCE.md`); 89% dos
+movimentos ficam a até 0,12 de uma delas. Todo projeto HyperFrames do Prisma já
+carrega as 12 como eases GSAP com nome (`ease:"softLand"`), por
+`assets/hyperframes/vendor/prisma-eases.js`; em Python, `hfkit/eases.py`
+(`tween("enter")` → `duration:0.4, ease:"softLand"`). Use em **motion novo**: as
+camadas já portadas mantêm as curvas aprovadas (paridade com o Remotion).
+
+| Ease | % do percurso em 10 / 25 / 50 / 75% do tempo | Mediana a 30 fps | Para quê |
+|---|---|---|---|
+| `softLand` | 30 / 59 / 85 / 95 | 12 f (0,40 s) | texto subindo, painel deslizando, escala entrando: o cavalo de batalha das entradas |
+| `snapSettle` | 54 / 84 / 96 / 98 | 11 f | entrada de herói e de CTA (23% dos movimentos de CTA) |
+| `glide` | 16 / 39 / 69 / 91 | 10 f | movimento médio, empurrão de câmera |
+| `whip` | 23 / 52 / 83 / 97 | 7 f | movimento grande e rápido |
+| `cruise` (linear) | 10 / 25 / 50 / 75 | 9 f | fade, deriva, contador |
+| `softInOut` | 4 / 17 / 50 / 83 | 9 f | opacidade, desfoque, rampa de cor |
+| `gentleIn` | 1 / 6 / 24 / 55 | 9 f | início de saída, empurrão lento que entra no corte |
+| `accelExit` | 0 / 3 / 16 / 47 | 13 f | **a curva de saída**: acelera e sai no pico de velocidade |
+| `crashOut` | 0 / 0 / 6 / 32 | 17 f | saída que termina num corte seco |
+| `popOver` | pico 1,08 em t 0,72 | 15 f | o overshoot tardio (88% dos overshoots medidos) |
+| `crashIn` | pico 1,18 em t 0,27 | 10 f | pancada que passa da marca e volta |
+| `bounceHard` | pico 1,48 em t 0,62 | 22 f | overshoot grande: menos de 1,5% dos movimentos |
+
+O que a medição diz e a §1/§2 não diziam:
+- **Entrada desacelera, saída acelera.** 58% das chegadas são ease-out; nas saídas, o ease-in aparece em 37% (contra 16% nas chegadas).
+- **A saída não é mais curta que a entrada.** Medido: entradas de posição/escala 12 f, saídas 13–14 f. A §1 ("saída ~0,25 s, mais rápida") é hipótese não confirmada. Não mude vídeo aprovado por isso; em motion novo, teste os dois.
+- **Overshoot é raro e tardio:** menos de 9% dos movimentos, um encosto lento depois da marca, não uma mola rápida. No máximo uma mola visível por filme.
+- **Chegada vem do grande, nunca do zero:** logo entra de ~3,5× desacelerando (`snapSettle` 18–30 f).
+- **Elementos chegam se movendo, não em fade:** 3.392 entradas por transform contra 584 por opacidade.
+
+Na verificação, `motion_gates.py` (SKILL.md, Helpers) mede quadros vazios, segura do fim e o "page chrome" que denuncia motion de IA. `helpers/vendor/motionmaxxing/slop.md` tem a lista completa dos 25 vícios, com a medição de cada um.
+
 ## 3. Câmera virtual (dentro da cena ou do insert)
 
 - **Aproximação e deriva em camadas separadas:** dois contêineres aninhados — o

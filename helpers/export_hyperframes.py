@@ -45,6 +45,15 @@ EDIT = args.edit.resolve()
 PUB = EDIT / "remotion" / "public"
 ROOT = (args.out or (EDIT / "hyperframes")).resolve()
 
+
+def _eases_inline() -> str:
+    """The measured eases (hfkit/eases.py) as an inline <script>, loaded right after GSAP."""
+    import sys as _s
+    from pathlib import Path as _P
+    _s.path.insert(0, str(_P(__file__).resolve().parent))
+    from hfkit.eases import script_inline
+    return script_inline()
+
 def _load(p, default):
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -568,6 +577,7 @@ index = f"""<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={W}, height={H}" />
     {GSAP}
+    {_eases_inline()}
     <style>
       * {{ margin: 0; padding: 0; box-sizing: border-box; }}
       html, body {{ margin: 0; width: {W}px; height: {H}px; overflow: hidden; background: #000; }}

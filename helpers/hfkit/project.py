@@ -196,6 +196,7 @@ class Project:
     <meta name="viewport" content="width={self.W}, height={self.H}" />
     <script src="assets/vendor/gsap.min.js"></script>
     <script src="assets/vendor/prisma-hf.js"></script>
+    <script src="assets/vendor/prisma-eases.js"></script>
     <style>
       * {{ box-sizing: border-box; }}  /* Remotion's default CSS (default-css.js) */
       html, body {{ margin: 0; padding: 0; width: {self.W}px; height: {self.H}px; overflow: hidden; background: #000; }}
