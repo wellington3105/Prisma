@@ -84,3 +84,12 @@ Pinned at `8c8ec0f2a6f6c9a0da15cd24f7b1298ab298368c` (2026-10-06). Copyright Tej
 | [`helpers/vendor/motionmaxxing/look.py`](helpers/vendor/motionmaxxing/look.py), [`lint.mjs`](helpers/vendor/motionmaxxing/lint.mjs), [`_cdp.mjs`](helpers/vendor/motionmaxxing/_cdp.mjs), [`slop.md`](helpers/vendor/motionmaxxing/slop.md) | `scripts/`, `references/slop.md` | Copied unchanged |
 | [`helpers/motion_gates.py`](helpers/motion_gates.py) | new | Prisma wrapper: `reels` profile, flattening of HyperFrames sub-compositions for the lint, model-year exemption |
 | [`references/motion-craft.md`](references/motion-craft.md) §2.1 | `references/motion.md` §1-§2 | Measured findings summarised in Portuguese |
+
+## Image-Adaptive 3D LUT (HuiZeng/Image-Adaptive-3DLUT, Apache-2.0)
+
+Pinned at `b491f6df64a588864739a157db271e5c848e1805`. Zeng, Cai, Li, Cao, Zhang, TPAMI 2022.
+
+| Prisma file | From | Notes |
+|---|---|---|
+| [`assets/models/ia3dlut/*.pth`](assets/models/ia3dlut/NOTICE.txt) | pretrained sRGB weights (MIT-Adobe FiveK), paired and unpaired | Loaded as weights only (`torch.load(weights_only=True)`) |
+| [`helpers/auto_color.py`](helpers/auto_color.py) | new | Inference written for Prisma: weights averaged over frames inside the EDL ranges, one `.cube` per source |

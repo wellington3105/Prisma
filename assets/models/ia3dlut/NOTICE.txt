@@ -1,0 +1,4 @@
+Pesos pré-treinados (sRGB, MIT-Adobe FiveK) de Image-Adaptive 3D LUT
+Zeng, Cai, Li, Cao, Zhang — TPAMI 2022 — https://github.com/HuiZeng/Image-Adaptive-3DLUT
+commit b491f6df64a588864739a157db271e5c848e1805 · licença Apache-2.0 (LICENSE ao lado)
+Usados só como pesos (torch.load weights_only=True); a inferência é helpers/auto_color.py.
