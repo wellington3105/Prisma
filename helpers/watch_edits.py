@@ -126,6 +126,9 @@ def fmt(t: float) -> str:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return 0
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").expanduser().resolve()
     watched = {
         root / "preview_edits.json": digest,

@@ -33,6 +33,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):  # → in the help text crashed a captured cp1252 console
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 SKILL = Path(__file__).resolve().parent.parent
 ap = argparse.ArgumentParser(description="Prisma → HyperFrames editor project")
 ap.add_argument("edit", type=Path, help="the Prisma <edit> dir")

@@ -10,7 +10,7 @@ Fonte do levantamento: `C:\Users\welli\OneDrive\Wellington\Documentos\Antigravit
 
 ## Precedência e custo
 
-1. O pedido de edição continua com a skill Prisma. Estratégia confirmada antes de mexer no corte; Fase 1 em áudio/corte/grade com `verify_cut.py`; aprovação humana do `cut.mp4`; Fase 2 só em Remotion, por `public/edit-data.json`, com código bespoke limitado a `src/CustomGraphics.tsx`; saídas em `<videos_dir>/edit/`.
+1. O pedido de edição continua com a skill Prisma. Estratégia confirmada antes de mexer no corte; Fase 1 em áudio/corte/grade com `verify_cut.py`; aprovação humana do `cut.mp4`; Fase 2 pelo pipeline do Prisma (HyperFrames por padrão, Remotion como fallback automático: SKILL.md regra 14), a partir de `edit-data.json`, com código bespoke só onde o Prisma prevê (`references/scenes.md`); saídas em `<videos_dir>/edit/`.
 2. Uma skill externa pode informar uma decisão ou executar uma tarefa **pontual compatível** com a fase atual. Nunca aplique a receita de outro editor para substituir a EDL, o gate, o template Remotion ou a timeline do Prisma implicitamente. Uma aplicação alternativa completa requer escolha expressa do usuário para aquele projeto.
 3. Antes de executar qualquer ferramenta externa, confira pré-requisitos locais e as instruções da entrada escolhida. Não instale automaticamente dependências, MCPs ou serviços ao simplesmente abrir o Prisma. Não rode `install.sh` Unix literalmente no Windows.
 4. Para ElevenLabs, Pexo, Video Use com Scribe, LaiCut, geração/cloud no Toolkit, OpenChatCut/OpenMontage e outros provedores, obtenha modelo/operação, estimativa de consumo e autorização da operação com créditos antes de chamar API ou subir mídia. Primeiro compare o caminho local já disponível.
