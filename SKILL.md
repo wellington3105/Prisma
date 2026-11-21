@@ -79,6 +79,8 @@ Helpers live in `helpers/`, resolved relative to this SKILL.md (usually `~/.clau
 
 ## Helpers
 
+**Map by type → `references/tool-map.md`** (every helper, once, under ingest / transcription / cut / framing / colour / captions / motion / rhythm / VFX / audio / media / QA / clipping / preview / taste / delivery, plus which check runs when). `tests/test_catalog.py` fails when a helper is missing from it. Run `lint_undefined.py` after editing any helper: it catches the undefined names that crash a render.
+
 Phase 1:
 - **`ingest_url.py <url> --dest <videos_dir> [--section 12:00-25:30] [--max-height 1080]`** — edit from a link: yt-dlp → MP4 (≤1080p) straight into the videos dir; from there it's a source like any other. `--section` downloads ONLY a time range of a longform source (keyframe-accurate) — the cheap way to clip minutes 12–25 of a 1h video. `--simulate` prints title/duration/resolution without downloading (confirm before big fetches; run those in the background). Runs a `quality_probe.py` pre-flight automatically (`--skip-probe` to skip it) — warns in a few seconds if the source tops out below `--max-height`, instead of finding out after a long download.
 - **`transcribe.py … --glossary terms.txt`** (one term per line: brand, model, names from the briefing/script) — passed as a neutral list prompt. Measured 2026-11-03 on a 14 s Cayenne clip: "K&N" → **"Cayenne" 3/3**, 0 invented words; it also dropped two small words, one correctly ("de" — the isolated window confirms it is not said) and one wrongly ("já" at the clip's last edge). So: use it whenever the video names brands/people, and keep trusting `refine_edges.py`'s isolated windows for the edges — but note those windows run WITHOUT the glossary, so a `conteúdo difere` flag on a glossary term ("Porsche" heard as "aposta") is expected, not a defect.
@@ -685,6 +687,8 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 **Before writing or changing any HyperFrames scene** (EDITOR export, `build_hyperframes` layers, `beat_edit`, `cinema_edit`, `hf_motion_scenes`) **→ read `references/hyperframes-traps.md`**: what is already handled in code, what is missing (version pinning), and what was measured on 0.8.93 (duration rounding).
 
 **Both tracks, before writing any insert, card, headline or element animation → read `references/motion-craft.md`** with `direction.md`: `direction.md` picks the transition between scenes; `motion-craft.md` says how each element enters, settles, lives and leaves inside a scene (speeds, curve per role with measured Remotion beziers, cascade, reading time, virtual camera, speed-ramp velocity matching).
+
+**Soundtrack brief (genre, tempo, level under the voice, per format) → `references/soundtrack.md`** before generating or choosing a track.
 
 **Both tracks, before choosing any transition or animation → read `references/direction.md`.** The track reference tells you WHICH layers exist; `direction.md` tells you *when* to use a transition, *how long* it lasts and *with which curve* — energy/mood matrices, the six named presets with their GSAP→Remotion easing map, and the rule that governs the rest: one primary transition (60–70% of changes) plus one or two accents, never a different one per scene.
 

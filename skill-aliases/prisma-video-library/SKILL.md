@@ -1,6 +1,6 @@
 ---
 name: prisma-video-library
-description: Use only when the user explicitly asks to inspect or use one of the 24 external video resources integrated with Prisma, or when the Prisma skill directs you to its optional video library. Route to a pinned local source under the Prisma contract; do not auto-trigger for a general video edit.
+description: Use only when the user explicitly asks to inspect or use one of the 30 external video resources integrated with Prisma, or when the Prisma skill directs you to its optional video library. Route to a pinned local source under the Prisma contract; do not auto-trigger for a general video edit.
 ---
 
 # Prisma Video Library

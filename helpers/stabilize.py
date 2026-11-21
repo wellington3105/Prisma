@@ -129,7 +129,7 @@ def main() -> None:
     ap.add_argument("--max-zoom", type=float, default=1.12)
     ap.add_argument("--check", action="store_true", help="re-measure shake before/after with take_analyzer")
     ap.add_argument("--keep-if-better", action="store_true",
-                    help="keep the stabilised take only if shake drops >= 20% (else the original is written)")
+                    help="keep the stabilised take only if shake drops >= 20%% (else the original is written)")
     a = ap.parse_args()
     sm = a.smoothing
     if sm is None and a.analysis:
