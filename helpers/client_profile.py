@@ -27,7 +27,16 @@ Uso:
     uv run python helpers/client_profile.py seed <cliente> <edit>             # antes do gate de Estilo
     uv run python helpers/client_profile.py rule <cliente> --text "zoom nos cortes ≤ 1.10" --origin "pedido em 03/11, Cayenne"
     uv run python helpers/client_profile.py show <cliente>
-    uv run python helpers/client_profile.py list
+    uv run python helpers/client_profile.py list                              # com o estado do backup
+    uv run python helpers/client_profile.py backup [<cliente>]                # força uma cópia agora
+    uv run python helpers/client_profile.py restore <cliente> [--version arquivo] [--force]
+
+Backup: `perfis/` fica fora do git (dado de cliente; o repositório é público).
+Toda gravação (`learn`, `rule`) copia o perfil para `<backup>/<cliente>/profile.json`
+e guarda a versão anterior em `<backup>/<cliente>/historico/` (as 50 últimas).
+`<backup>` = $PRISMA_PERFIS_BACKUP, senão `$OneDrive/Prisma/perfis-backup`
+(privado e sincronizado). `PRISMA_PERFIS_BACKUP=off` desliga. Uma falha no
+backup avisa e não impede a gravação do perfil.
 """
 from __future__ import annotations
 
@@ -40,13 +49,26 @@ for _s in (_sys.stdout, _sys.stderr):
 
 import argparse
 import json
+import os
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PERFIS = ROOT / "perfis"
+PERFIS = Path(os.environ.get("PRISMA_PERFIS") or ROOT / "perfis")
+HISTORY_KEEP = 50
+
+
+def backup_root() -> Path | None:
+    v = os.environ.get("PRISMA_PERFIS_BACKUP", "").strip()
+    if v.lower() == "off":
+        return None
+    if v:
+        return Path(v)
+    od = os.environ.get("OneDrive") or os.environ.get("OneDriveConsumer")
+    return Path(od) / "Prisma" / "perfis-backup" if od else None
 
 
 def slug(name: str) -> str:
@@ -73,7 +95,66 @@ def save(cliente: str, prof: dict) -> Path:
     p = ppath(cliente)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(prof, ensure_ascii=False, indent=1), encoding="utf-8")
+    backup(cliente)
     return p
+
+
+def backup(cliente: str, quiet: bool = False) -> Path | None:
+    """Copia o perfil para o backup; a versão que estava lá vai para historico/.
+
+    Nunca derruba a gravação: um erro aqui (OneDrive fora, disco cheio) vira aviso."""
+    src, root = ppath(cliente), backup_root()
+    if root is None:
+        if not quiet:
+            print("  aviso: perfil SEM backup (defina PRISMA_PERFIS_BACKUP ou o OneDrive)", file=sys.stderr)
+        return None
+    try:
+        dst = root / slug(cliente) / "profile.json"
+        hist = dst.parent / "historico"
+        hist.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            if dst.read_bytes() == src.read_bytes():
+                return dst
+            shutil.copy2(dst, hist / f"profile-{time.strftime('%Y%m%d-%H%M%S')}.json")
+            for old in sorted(hist.glob("profile-*.json"))[:-HISTORY_KEEP]:
+                old.unlink()
+        shutil.copy2(src, dst)
+        if not quiet:
+            print(f"  backup: {dst}", file=sys.stderr)
+        return dst
+    except OSError as e:
+        print(f"  aviso: backup do perfil '{cliente}' falhou ({e}); o perfil local foi gravado", file=sys.stderr)
+        return None
+
+
+def backup_state(cliente: str) -> str:
+    root = backup_root()
+    if root is None:
+        return "SEM backup"
+    dst = root / slug(cliente) / "profile.json"
+    if not dst.exists():
+        return "SEM backup"
+    return "backup ok" if dst.read_bytes() == ppath(cliente).read_bytes() else "backup DESATUALIZADO"
+
+
+def restore(cliente: str, version: Path | None, force: bool) -> Path:
+    root = backup_root()
+    if version is None:
+        if root is None:
+            sys.exit("sem pasta de backup (PRISMA_PERFIS_BACKUP / OneDrive)")
+        version = root / slug(cliente) / "profile.json"
+    if not version.exists():
+        sys.exit(f"não há backup em {version}")
+    json.loads(version.read_text(encoding="utf-8"))          # recusa um arquivo corrompido
+    dst = ppath(cliente)
+    if dst.exists() and dst.read_bytes() != version.read_bytes():
+        if not force:
+            sys.exit(f"o perfil local '{cliente}' é diferente do backup; para substituí-lo use --force "
+                     "(o local é guardado ao lado como .antes-restore-<data>)")
+        shutil.copy2(dst, dst.with_name(f"profile.antes-restore-{time.strftime('%Y%m%d-%H%M%S')}.json"))
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(version, dst)
+    return dst
 
 
 def project_name(edit: Path) -> str:
@@ -152,6 +233,10 @@ def main() -> None:
     r = sub.add_parser("rule"); r.add_argument("cliente"); r.add_argument("--text", required=True); r.add_argument("--origin", required=True)
     sh = sub.add_parser("show"); sh.add_argument("cliente")
     sub.add_parser("list")
+    bk = sub.add_parser("backup"); bk.add_argument("cliente", nargs="?")
+    rs = sub.add_parser("restore"); rs.add_argument("cliente")
+    rs.add_argument("--version", type=Path, help="um arquivo de historico/ (padrão: o backup mais recente)")
+    rs.add_argument("--force", action="store_true", help="substituir um perfil local diferente")
     a = ap.parse_args()
     if a.cmd == "set":
         bind(a.edit.resolve(), a.cliente, force=a.force)
@@ -171,10 +256,18 @@ def main() -> None:
         print(f"  + regra em '{a.cliente}': {a.text} ({a.origin})")
     elif a.cmd == "show":
         print(json.dumps(load(a.cliente), ensure_ascii=False, indent=1))
+    elif a.cmd == "backup":
+        names = [a.cliente] if a.cliente else [p.parent.name for p in sorted(PERFIS.glob("*/profile.json"))]
+        for n in names:
+            load(n)
+            d = backup(n, quiet=True)
+            print(f"  {n}: " + (f"backup → {d}" if d else "SEM backup (defina PRISMA_PERFIS_BACKUP ou o OneDrive)"))
+    elif a.cmd == "restore":
+        print(f"  perfil '{a.cliente}' restaurado → {restore(a.cliente, a.version, a.force)}")
     else:
         for p in sorted(PERFIS.glob("*/profile.json")) if PERFIS.exists() else []:
             prof = json.loads(p.read_text(encoding="utf-8"))
-            print(f"  {p.parent.name:<24} {prof.get('style_origin', '—')} · {len(prof.get('rules', []))} regra(s)")
+            print(f"  {p.parent.name:<24} {prof.get('style_origin', '—')} · {len(prof.get('rules', []))} regra(s) · {backup_state(p.parent.name)}")
 
 
 if __name__ == "__main__":
