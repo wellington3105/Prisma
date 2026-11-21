@@ -112,6 +112,7 @@ Phase 1:
 - **`speech_regions.py <video>`** — acoustic speech intervals via silencedetect. The source of truth for cut EDGES (Whisper times drift/stretch). Answers *where* speech is — never *how loud* it is. **The threshold is now automatic (`--noise auto`, default):** derived from this recording's measured speech level and noise floor (`speech_level.py`). CLA200, 2026-11-06: auto landed at −23.1 dB — the value hand-calibrated for that echoey showroom — where the old fixed −33 dB found 3 speech regions instead of 72. An explicit value still works but must be written `--noise=-33dB` (argparse reads a bare `-33dB` as a flag).
 - **`multicam.py sync|virtual|add-ai|plan|build|ai-prep|ai-assemble|status`** — **multicam:** 2+ real cameras synced by audio (refuses low confidence), a VIRTUAL close angle punched in from a ≥4K master (follows the face, never upscales past the source), and any number of AI-generated angles. `plan` assigns an angle per EDL range — switch on every jump cut (hides them), close angle on numbers/details, master on movement, ≥ min-shot (2.5 s; 1.5 s for fast cuts), never two switches inside 1.2 s, open/close on the master — and routes EVERY range's sound to the master (`audio_sources`), so the voice never changes mic; `render.py` is used unchanged. AI angles: plan first, then `ai-prep` exports only the windows the plan uses (≤ 8 s, cut at pauses) for the paid `video_camera_angle` tool — **estimate cost and get the user's OK per batch** — and `ai-assemble` conforms the results; failed windows fall back to the master. Synthetic tests: offset 1.234 s recovered exactly; rendered audio 0.00 ms off on every take. Details: `references/multicam.md`.
 - **`voice_levels.py <video> [--edit-dir <dir>] [--edl edl.json] [--drop-db 5]`** — the source of truth for speech LEVEL. Flags every phrase, run and EDL range ≥5 dB under the speaker's own median and sizes a `gain_db`. It catches what nothing else does: a whispered aside where the transcript is perfect, `speech_regions` says "speech" and `verify_cut` finds no fault — and the viewer still cannot hear it. **Run it before writing the EDL.**
+- **`auto_color.py --edit-dir <edit> [--apply 70] [--strengths 100,70,50] [--variant paired|unpaired] [--denoise light|none] [--frame t]`** — **AI auto colour, the CapCut-"ajuste automático" equivalent and the Rec.709 default.** Image-Adaptive 3D LUT (Zeng et al., TPAMI 2022; FiveK sRGB weights, Apache-2.0, in `assets/models/ia3dlut/`): a small CNN mixes 3 basis LUTs for the scene. Weights are AVERAGED over 12 frames sampled inside the EDL ranges of each source → one `.cube` per source in `<edit>/grade/` (no flicker by construction), CPU, seconds. `--apply` writes `edl.json` `"grades": {source: "lut3d=…,denoise"}`, which `render.py` uses per source over the global `grade`. Measured 2026-11-16: reproduces the hand-approved Deocar 04 LUT within ~1/255; on a dark scene the user had deliberately darkened it brightens (ΔE 13) — it is a generic pro "auto", so always show the montage. Warns when frames of one source disagree (spread > 0.35): split that source by shot. Not for raw LOG (trained on sRGB). The `unpaired` variant oversaturated skin in the only test — option, not default.
 - **`detect_color.py <video> [--json]`** — resolves NORMAL vs LOG from the file instead of asking — metadata first, image statistics when the metadata is silent (common: a transcode drops the tags). Returns profile, **confidence**, evidence and the `grade` to apply. Only `confidence: low` should send you back to the user; the identification detail is in `references/log-grade.md`.
 - **`render.py <edl.json> -o cut.mp4 --no-subtitles [--voice-master] [--keep-resolution] [--jobs N] [--no-jcut] [--jcut-lead N] [--jcut-tail-trim N]`** — per-segment extract (grade + fades, **parallel**) → **J-cut overlap assembly (default)** or lossless concat → optional voice master → loudnorm. Writes `jcut_timeline` into the EDL: the real output positions, which is what everything downstream must index off. Short-form fps is automatic: **30fps for 30fps+ sources, else 24** (longform keeps source fps via `--keep-resolution`). Set `edit-data.json` `fps` to match the resulting `cut.mp4`.
 - **`verify_cut.py <edl.json> <cut.mp4> [--min-silence 1.2]`** — numeric self-eval: duration, per-junction pop/clipped-word probes, dead air, black frames, clipping, **and range level balance** (each range's RMS vs the median range; `LOW-LEVEL` under −4 dB). ~350 tokens of text instead of N images. The range-balance line is the convergence test for a `gain_db` fix.
@@ -392,8 +393,14 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
 3. **Converse.** Describe what you see; ask questions shaped by the material (content type, target length/aspect, pacing, must-keep/must-cut). No fixed checklist.
 4. **Detect the colour profile — do NOT ask.** Run `detect_color.py <source>`.
    The answer is in the file; asking put a measurable question on the user.
-   - **`rec709` (normal)** → no grade. `"grade": ""`. A standard profile already
-     carries its look; "improving" it loses the match with the user's other material.
+   - **`rec709` (normal)** → **AI auto colour is the default** (decision 2026-11-16):
+     `auto_color.py --edit-dir <edit>` (after `edl.json` exists, so it samples only the
+     kept takes) writes one LUT per source at 100/70/50 % plus a montage
+     `verify/auto_color_<source>.png`. Show it with the strategy; the user picks
+     (default **70 %**, light denoise included) → `auto_color.py --edit-dir <edit>
+     --apply 70` writes `edl.json` `"grades": {source: …}`. If the user prefers the
+     camera's own look, `"grade": ""` as before. If the user hands over a file they
+     graded themselves, no grade at all (that file IS the look).
    - **LOG / HLG / PQ** → apply the helper's `grade` field and say so in one line.
      Apple Log uses its approved preset; any other LOG gets an expansion **measured
      from that footage**, not a guessed vendor curve.
@@ -503,7 +510,7 @@ Reason about the image, don't preset-blind. Mental model ASC CDL: per channel `o
   (measured `YAVG=64/1023`, `YBITDEPTH=1` on an iPhone Apple Log ProRes) while
   behaving correctly at 8- and 16-bit. `curves`, `colorbalance`, `hue` and `eq` are
   bit-depth-safe. Keep that guard in front of any new grade caller.
-- **Standard/Rec.709** → light corrective or none. A user `.cube` goes first as `lut3d=`.
+- **Standard/Rec.709** → `auto_color.py` (AI, one LUT per source, montage + user pick; see Phase 1 step 4). A user `.cube` goes first as `lut3d=`. A fixed client LUT is no longer the default: it fits the scene it was cut from and misses the next one (Deocar, measured: ΔE 4.5 on its own scene, 7.8 on another, where the AI LUT scored 3.8 on the first with no training).
 - **Many takes and/or low light** (montage, showroom, interior, night) → don't put one look on unmatched takes: run `color_pipeline.py` (denoise → balance → protected-shadow exposure → look → clarity) and read `references/color-multitake.md`. Keep contrast out of the look; check the report's shadow p20 never falls.
 
 ### LOG / HDR sources
@@ -637,7 +644,9 @@ For a single long source (longform), the main context can pick cuts directly fro
 ```
 
 `grade`: preset name, raw filter, or `"auto"` — normally whatever `detect_color.py`
-returned. `chapter` fields feed `chapters.py` (longform).
+returned. `grades`: optional `{"<source>": "<filter>"}` — per-source override of
+`grade`, written by `auto_color.py --apply` (one AI LUT per source); sources not
+listed use `grade`. `chapter` fields feed `chapters.py` (longform).
 
 `jcut`: optional. **Omit it and the J-cut runs with the defaults** (lead up to 5f,
 capped per seam by measured silence; tail trim up to 2f); `false` butt-joins

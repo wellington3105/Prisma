@@ -46,3 +46,8 @@ see CREDITS.md for what was taken and where it lives.
 motionmaxxing (https://github.com/Tejashmakwana/motionmaxxing)
 Copyright Tejas Makwana. Licensed under the Apache License, Version 2.0.
 Full text: helpers/vendor/motionmaxxing/LICENSE. Files used: see CREDITS.md.
+
+--------------------------------------------------------------------------------
+Image-Adaptive 3D LUT pretrained weights (https://github.com/HuiZeng/Image-Adaptive-3DLUT)
+Copyright Hui Zeng et al. Licensed under the Apache License, Version 2.0.
+Full text: assets/models/ia3dlut/LICENSE. Notice: assets/models/ia3dlut/NOTICE.txt.

@@ -99,6 +99,17 @@ def resolve_grade_filter(grade_field: str | None) -> str:
     return grade_field
 
 
+def source_grade(edl: dict, source: str, resolved: str) -> str | None:
+    """Per-source override: EDL `"grades": {"<source>": "<filter>"}` (written by
+    auto_color.py — one AI LUT per source) wins over the global `grade`.
+    Returns None when the source has no override (use the global path)."""
+    g = (edl.get("grades") or {}).get(source)
+    if g is None:
+        return None
+    r = resolve_grade_filter(g)
+    return "" if r == "__AUTO__" else r
+
+
 def resolve_path(maybe_path: str, base: Path) -> Path:
     """Resolve a path that may be absolute or relative to `base`."""
     p = Path(maybe_path)
@@ -376,7 +387,10 @@ def extract_segment(
         # makes the render match the 8-bit frame the user approved in the
         # `grade.py --candidates` montage.
         vf_parts.append("format=yuv420p")
-        vf_parts.append(grade_filter)
+        # nlmeans fed with RGB (lut3d/colorbalance output) leaves the last 8 columns
+        # BLACK at width 1080 (measured 2026-11-20: every Deocar delivery had an 8 px
+        # black band on the right). Back to YUV before nlmeans fixes it (ΔE ≈ 1/255).
+        vf_parts.append(re.sub(r"(?<!format=yuv420p),\s*nlmeans", ",format=yuv420p,nlmeans", grade_filter))
     vf = ",".join(vf_parts)
 
     # Per-segment level match (whisper/mumble rescue). Applied BEFORE the fades
@@ -524,7 +538,10 @@ def extract_all_segments(
         duration = end - start
         out_path = clips_dir / f"seg_{i:02d}_{src_name}.mp4"
 
-        if is_auto:
+        override = source_grade(edl, src_name, resolved)
+        if override is not None:
+            seg_filter = override
+        elif is_auto:
             seg_filter, _stats = auto_grade_for_clip(src_path, start=start, duration=duration, verbose=False)
         else:
             seg_filter = resolved
@@ -799,7 +816,9 @@ def extract_and_assemble_jcut(
 
     def work(p: dict) -> dict:
         i, r = p["i"], p["range"]
-        seg_filter = (auto_grade_for_clip(p["src"], start=p["v_in"],
+        override = source_grade(edl, r["source"], resolved)
+        seg_filter = (override if override is not None else
+                      auto_grade_for_clip(p["src"], start=p["v_in"],
                                           duration=p["v_out"] - p["v_in"],
                                           verbose=False)[0]
                       if is_auto else resolved)
