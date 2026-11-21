@@ -254,11 +254,15 @@ def _probe_duration(path: Path) -> float:
 
 def find_clips(video_path: Path, transcript_path: Path,
                min_seconds: float | None = None, max_seconds: float | None = None,
-               window_seconds: float = 90, overlap_seconds: float = 30) -> list[dict]:
+               window_seconds: float = 90, overlap_seconds: float = 30,
+               cover_all: bool = False) -> list[dict]:
     """Produce a candidate clip shortlist: one clip window per transcript
     window, duration-bounded and word-snapped. No ranking/scoring — that
-    judgment call is left to the caller (a human, or an LLM step bolted on
-    top of this JSON later)."""
+    judgment call is left to the caller (a human, or viral_score.py).
+
+    By default only the FIRST `clip_count_targets` windows are kept (≤12), which
+    on a 30-min source means only its first ~12 minutes. `cover_all=True`
+    (`--all`) keeps every window; viral_score.py always covers the whole video."""
     duration = _probe_duration(video_path)
     transcript_result, words = _load_prisma_transcript(transcript_path)
     lo, hi = clip_duration_bounds(min_seconds, max_seconds)
@@ -267,7 +271,7 @@ def find_clips(video_path: Path, transcript_path: Path,
                                        window_seconds=window_seconds,
                                        overlap_seconds=overlap_seconds)
     low_n, high_n = clip_count_targets(len(windows))
-    chosen = windows[:high_n] if len(windows) > high_n else windows
+    chosen = windows if cover_all or len(windows) <= high_n else windows[:high_n]
 
     clips = []
     for w in chosen:
@@ -298,6 +302,8 @@ def main() -> None:
     ap.add_argument("--max-seconds", type=float, default=None)
     ap.add_argument("--window-seconds", type=float, default=90)
     ap.add_argument("--overlap-seconds", type=float, default=30)
+    ap.add_argument("--all", action="store_true",
+                    help="keep every window (default keeps only the first ≤12, i.e. the start of a long video)")
     args = ap.parse_args()
 
     transcript_path = args.edit_dir / "transcripts" / f"{args.video.stem}.json"
@@ -310,7 +316,8 @@ def main() -> None:
     clips = find_clips(args.video, transcript_path,
                        min_seconds=args.min_seconds, max_seconds=args.max_seconds,
                        window_seconds=args.window_seconds,
-                       overlap_seconds=args.overlap_seconds)
+                       overlap_seconds=args.overlap_seconds,
+                       cover_all=args.all)
     print(json.dumps({"video": str(args.video), "count": len(clips), "clips": clips},
                      ensure_ascii=False, indent=2))
 
