@@ -396,6 +396,17 @@ def main() -> None:
                         log(f"  ! alias {a.name} falhou em {skills_dir}: {e}")
             log(f"  aliases das skills externas instalados ({len(list(aliases.iterdir()))})")
 
+        # The sub-agents (prisma-critico, prisma-motion, prisma-audio): ~/.claude/agents for
+        # Claude Code and, when the global vault exists, ~/.aiox-global/agents for the Maestro,
+        # Hermes and Lissa. Run from the INSTALLED copy so the vault points at it.
+        claude_dest = next((d for d in dests if (Path.home() / ".claude" / "skills") in d.parents), None)
+        sync = claude_dest / "agents" / "sync_agents.py" if claude_dest else None
+        if sync and sync.is_file():
+            r = subprocess.run([sys.executable, str(sync)], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            log("  agents do Prisma instalados" if r.returncode == 0
+                else f"  ! agents do Prisma não instalados: {(r.stderr or r.stdout)[-300:]}")
+
     # Every destination needs its own .venv — helpers run as `uv run python …`
     # from whichever copy the agent loaded. Syncing only the first one left the
     # second agent with a skill that imports nothing. uv hardlinks from its

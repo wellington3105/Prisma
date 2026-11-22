@@ -143,6 +143,21 @@ def test_render_profile():
         assert mg.run_render(v, Path(d) / "out2", "film", None)["gates"][2]["gating"]
 
 
+def test_lint_writes_nothing_in_the_project():
+    if not _have_browser():
+        print("  skip: node or Chrome missing")
+        return
+    with tempfile.TemporaryDirectory() as d:
+        proj, out = Path(d) / "proj", Path(d) / "out"
+        _fixture(proj, "DEOCAR · 02 / 05")
+        before = {p.relative_to(proj): p.stat().st_mtime for p in proj.rglob("*")}
+        r = mg.run_lint(proj, samples=4, keep=True, work=out)
+        after = {p.relative_to(proj): p.stat().st_mtime for p in proj.rglob("*")}
+        assert after == before, sorted(set(after) - set(before))
+        assert (out / "_motion_lint_flat.html").exists()
+        assert r["gate"]["status"] == "FAIL"           # the flat copy still sees the planted label
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

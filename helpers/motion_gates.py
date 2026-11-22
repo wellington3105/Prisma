@@ -141,7 +141,7 @@ def scope_css(css: str, scope: str) -> str:
     return "".join(out)
 
 
-def flatten(index: Path) -> tuple[Path, int]:
+def flatten(index: Path, dest_dir: Path | None = None) -> tuple[Path, int]:
     """Inline every sub-composition into its host so one DOM holds the whole film."""
     src = index.read_text(encoding="utf-8")
     subs: list[dict] = []
@@ -199,16 +199,23 @@ def flatten(index: Path) -> tuple[Path, int]:
     flat = re.sub(r"</body>", "<script>\n" + "\n".join(boot) + "\n</script>\n</body>", flat, count=1, flags=re.I)
     # The root's own <script> runs before the boot block and may reference window.__timelines.
     flat = flat.replace("<head>", "<head>\n<script>window.__timelines = window.__timelines || {};</script>", 1)
-    out = index.parent / "_motion_lint_flat.html"
+    if dest_dir is None:
+        out = index.parent / "_motion_lint_flat.html"
+    else:
+        # Written OUTSIDE the project (the critic is read-only): a <base> keeps every relative
+        # asset path (fonts, media, vendor JS) resolving against the real project folder.
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        out = dest_dir / "_motion_lint_flat.html"
+        flat = flat.replace("<head>", f'<head>\n<base href="{index.parent.resolve().as_uri()}/">', 1)
     out.write_text(flat, encoding="utf-8")
     return out, len(subs)
 
 
-def run_lint(target: Path, samples: int | None, keep: bool) -> dict:
+def run_lint(target: Path, samples: int | None, keep: bool, work: Path | None = None) -> dict:
     index = target / "index.html" if target.is_dir() else target
     if not index.exists():
         die(f"no index.html at {target}")
-    flat, n_subs = flatten(index)
+    flat, n_subs = flatten(index, work)
     env = dict(os.environ, CHROME_PATH=chrome())
     cmd = ["node", str(VENDOR / "lint.mjs"), str(flat), "--json"]
     if samples:
@@ -315,7 +322,7 @@ def main():
     else:
         out = a.out or ((a.hf if a.hf.is_dir() else a.hf.parent) / "verify_motion")
     if a.cmd in ("lint", "all"):
-        res["lint"] = run_lint(a.hf, a.samples, a.keep)
+        res["lint"] = run_lint(a.hf, a.samples, a.keep, work=out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "motion_gates.json").write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
     code = report(res)
