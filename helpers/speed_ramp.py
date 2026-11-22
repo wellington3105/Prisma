@@ -60,6 +60,8 @@ PRESETS = {
     "speed-in": "0:5,0.65:1,1:1",
     "speed-in-slow": "0:5,0.55:0.45,1:0.45",
     "speed-out-slow": "0:0.45,0.45:0.45,1:5",
+    # a shot that is BOTH the entry of one speed cut and the exit into the next one
+    "speed-inout": "0:5,0.35:1,0.65:1,1:5",
 }
 
 

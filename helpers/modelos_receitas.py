@@ -165,6 +165,15 @@ def _add_fx(sh: dict, fx: list[str]) -> None:
     sh["fx"] = cur
 
 
+def _set_ramp(sh: dict, new: str) -> None:
+    """A shot between two speed cuts needs both ramps: speed-in then speed-out = speed-inout."""
+    cur = sh.get("ramp")
+    if {cur, new} == {"speed-in", "speed-out"} or (cur == "speed-inout" and new in ("speed-in", "speed-out")):
+        sh["ramp"] = "speed-inout"
+    else:
+        sh["ramp"] = new
+
+
 def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params: dict[str, str]) -> None:
     ap = m.dados.get("aplica", {})
     for i in planos:
@@ -186,11 +195,11 @@ def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params
         if ap.get("fx"):
             _add_fx(shots[i], ap["fx"])
         if ap.get("ramp_entrada"):
-            shots[i]["ramp"] = ap["ramp_entrada"]
+            _set_ramp(shots[i], ap["ramp_entrada"])
         if ap.get("ramp_saida"):
             if i == 0:
                 raise SystemExit(f"{m.slug}: o plano 0 não tem plano anterior para acelerar até o corte")
-            shots[i - 1]["ramp"] = ap["ramp_saida"]
+            _set_ramp(shots[i - 1], ap["ramp_saida"])
 
 
 def apply_montagem(m: Modelo, plan: dict, planos: list[int] | None, params: dict[str, str]) -> dict:
@@ -201,6 +210,10 @@ def apply_montagem(m: Modelo, plan: dict, planos: list[int] | None, params: dict
         limite = m.dados.get("regras", {}).get("max_acentos", MAX_ACENTOS)
         prim = load(m.dados["regras"]["primaria"])
         alvo = planos if planos is not None else list(range(1, len(shots)))
+        mantidos = [k for k in alvo if shots[k].get("transition") in ACCENT_TRANSITIONS]
+        if mantidos:
+            print(f"  {m.slug}: mantidos os acentos feitos à mão nos planos {', '.join(map(str, mantidos))}")
+            alvo = [k for k in alvo if k not in mantidos]
         _apply_tipo_montagem(prim, shots, alvo, _params(prim, {}))
     else:
         if not planos:
@@ -248,8 +261,8 @@ def _record(state_dir: Path, slug: str, f: Path) -> None:
     sp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[str, str]) -> Path:
-    """Apply a modelo to a file and return the backup path. Host comes from the recipe, not the file name."""
+def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[str, str]) -> list[Path]:
+    """Apply a modelo and return the backup paths. Host comes from the recipe, not the file name."""
     m = load(slug)
     target = Path(target)
     if m.host == "montagem":
@@ -261,7 +274,7 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
             print(f"  {slug}: nada mudou (já aplicado)")
         bk = _write_with_backup(target, old, new, slug)
         _record(target.parent, slug, target)
-        return bk
+        return [bk]
     return apply_reel_file(m, target, planos)
 
 
@@ -332,7 +345,13 @@ def apply_reel(m: Modelo, edit: Path, planos: list[int] | None = None) -> tuple[
             existentes = [x for x in ed.get("transitions", []) if round(float(x.get("at", -1)), 3) not in cuts]
             novas = existentes + [dict(tr, at=c) for c in cuts]
             if sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS) > limite:
+                ja = [x for x in existentes if x.get("type", "flash") in REEL_ACCENTS]
                 todos = ", ".join(f"{i}: {c}s" for i, c in enumerate(_cut_times(ed_path)))
+                if ja:
+                    lista = ", ".join(f"{x['at']}s {x.get('type', 'flash')}" for x in ja)
+                    raise SystemExit(f"{t.slug}: passaria de {limite} acentos. Já existem {len(ja)} transições de acento "
+                                     f"no edit-data ({lista}); tire alguma antes, ou escolha menos cortes com --plano "
+                                     f"(cortes: {todos}).")
                 raise SystemExit(f"{t.slug}: passaria de {limite} acentos. Escolha até {limite} cortes com --plano "
                                  f"(cortes: {todos}).")
             ed["transitions"] = sorted(novas, key=lambda x: x["at"])
@@ -354,19 +373,28 @@ def _print_profile_rules(st: dict) -> None:
         print(f"    - {r['text']}")
 
 
-def apply_reel_file(m: Modelo, target: Path, planos: list[int] | None) -> Path:
+def apply_reel_file(m: Modelo, target: Path, planos: list[int] | None) -> list[Path]:
+    """Edit-data first, then state.json (with the modelo record folded in): if the edit-data is locked
+    (open in the Studio), nothing is written; if state.json then fails, the edit-data is restored."""
+    import time
     edit = _edit_dir_of(Path(target))
     sp = edit / "state.json"
     if not sp.exists():
         raise SystemExit(f"{m.slug}: não achei state.json em {edit} (passe a pasta edit/ do Reel)")
     old_st = json.loads(sp.read_text(encoding="utf-8"))
     new_st, new_ed = apply_reel(m, edit, planos)
+    new_st.setdefault("modelos", []).append({"slug": m.slug, "file": str(target), "when": time.strftime("%Y-%m-%d %H:%M")})
     _print_profile_rules(old_st)
-    bk = _write_with_backup(sp, old_st, new_st, m.slug)
+    bks: list[Path] = []
     if new_ed is None:
         print(f"  {m.slug}: ainda não há edit-data.json; a camada concreta entra quando a Fase 2 for montada")
     else:
         ed_path = _edit_data_path(edit)
-        bk = _write_with_backup(ed_path, json.loads(ed_path.read_text(encoding="utf-8")), new_ed, m.slug)
-    _record(edit, m.slug, Path(target))
-    return bk
+        bks.append(_write_with_backup(ed_path, json.loads(ed_path.read_text(encoding="utf-8")), new_ed, m.slug))
+    try:
+        bks.append(_write_with_backup(sp, old_st, new_st, m.slug))
+    except OSError:
+        if bks:
+            _edit_data_path(edit).write_text(bks[0].read_text(encoding="utf-8"), encoding="utf-8")
+        raise
+    return bks

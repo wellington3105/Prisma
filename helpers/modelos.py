@@ -72,8 +72,8 @@ def main() -> int:
         print("receita:", json.dumps(m.dados, ensure_ascii=False, indent=1))
     elif a.cmd == "apply":
         params = dict(p.split("=", 1) for p in a.param)
-        bk = R.apply_file(a.slug, a.alvo, a.plano, params)
-        print(f"  {a.slug} aplicado · backup: {bk}")
+        bks = R.apply_file(a.slug, a.alvo, a.plano, params)
+        print(f"  {a.slug} aplicado · backup: {', '.join(map(str, bks))}")
     elif a.cmd == "material":
         import modelos_demo as D
         mat = D.material(a.force)

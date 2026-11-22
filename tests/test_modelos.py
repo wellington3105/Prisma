@@ -136,7 +136,7 @@ def test_whip_pan_on_shot():
     os.environ.pop("PRISMA_MODELOS", None)
     with tempfile.TemporaryDirectory() as d:
         f = _plan(Path(d), 4)
-        bk = receitas().apply_file("whip-pan", f, [2], {"dir": "right"})
+        bk = receitas().apply_file("whip-pan", f, [2], {"dir": "right"})[0]
         shots = _read(f)["shots"]
         assert shots[2]["transition"] == "whip-right"
         assert bk.exists() and "whip-pan" in bk.name
@@ -461,6 +461,70 @@ def test_list_shows_demo_status():
                              encoding="utf-8", env=e).stdout
         line = {l.split()[3]: l for l in out.splitlines() if l.strip()}
         assert "✅" in line["whip-pan"] and "🧪" in line["flash"], out
+
+
+# ---------------------------------------------------------------- final review fixes
+def test_estilo_keeps_hand_accents():                     # I1
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 6, {1: "whip-left", 2: "flash", 3: "zoom"})
+        receitas().apply_file("montagem-na-batida", f, None, {})
+        sh = _read(f)["shots"]
+        assert [sh[i]["transition"] for i in (1, 2, 3)] == ["whip-left", "flash", "zoom"]
+        assert sh[4]["transition"] == "speed" and sh[5]["transition"] == "speed"
+
+
+def test_speed_transition_middle_shots_ramp_both_ways():  # I2
+    os.environ.pop("PRISMA_MODELOS", None)
+    import speed_ramp
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 4)
+        receitas().apply_file("montagem-na-batida", f, None, {})
+        ramps = [s.get("ramp") for s in _read(f)["shots"]]
+        assert ramps == ["speed-out", "speed-inout", "speed-inout", "speed-in"], ramps
+        assert "speed-inout" in speed_ramp.PRESETS
+
+
+def test_reel_refusal_names_existing_transitions():       # I3
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), segments=5)
+        ed_p = edit / "remotion" / "public" / "edit-data.json"
+        ed = json.loads(ed_p.read_text(encoding="utf-8"))
+        ed["transitions"] = [{"at": 1.0, "type": "glitch"}, {"at": 2.0, "type": "flash"}, {"at": 3.0, "type": "whip-pan"}]
+        ed_p.write_text(json.dumps(ed), encoding="utf-8")
+        msg = _refused(receitas().apply_file, "flash-na-troca", edit, [0], {})
+        assert "1.0" in msg and "glitch" in msg and "Já existem" in msg, msg
+
+
+def test_reel_write_is_not_half_done():                   # I4
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d))
+        R = receitas()
+        before = (edit / "state.json").read_text(encoding="utf-8")
+        real = R._write_with_backup
+        def boom(f, old, new, slug):
+            if f.name == "edit-data.json":
+                raise OSError("locked")
+            return real(f, old, new, slug)
+        R._write_with_backup = boom
+        try:
+            R.apply_file("push-in", edit, None, {})
+        except OSError:
+            pass
+        assert (edit / "state.json").read_text(encoding="utf-8") == before
+
+
+def test_reel_apply_returns_both_backups():               # I4
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d))
+        bks = receitas().apply_file("push-in", edit, None, {})
+        names = sorted(Path(b).name.split(".antes-")[0] for b in bks)
+        assert names == ["edit-data", "state"], bks
+        st = _st(edit)
+        assert st["modelos"][-1]["slug"] == "push-in" and st["awaitingStyle"] is True
 
 
 if __name__ == "__main__":
