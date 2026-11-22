@@ -95,6 +95,30 @@ def test_agents_are_wired():
             assert (REF / r).exists(), f"{a.name} cita references/{r}, que não existe"
 
 
+def test_agents_registry_and_sync():
+    """agents/agents.json and agents/claude/*.md describe the same agents, and sync_agents.py
+    writes both runtimes (Claude .md + vault agent.yaml) and detects drift with --check."""
+    import subprocess
+    import tempfile
+    reg = json.loads((SKILL / "agents" / "agents.json").read_text(encoding="utf-8"))["agents"]
+    assert {a["id"] for a in reg} == {p.stem for p in (SKILL / "agents" / "claude").glob("*.md")}
+    for a in reg:
+        assert a["reports_to"] == "video-production-director" and "prisma" in a["skills"], a["id"]
+    assert "model: opus" in (SKILL / "agents" / "claude" / "prisma-critico.md").read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory() as d:
+        c, v = Path(d) / "claude", Path(d) / "vault"
+        run = lambda *x: subprocess.run([sys.executable, str(SKILL / "agents" / "sync_agents.py"), "--claude-dir", str(c),
+                                         "--vault-dir", str(v), *x], capture_output=True, text=True, encoding="utf-8")
+        assert run().returncode == 0
+        for a in reg:
+            assert (c / f"{a['id']}.md").exists()
+            y = (v / a["id"] / "agent.yaml").read_text(encoding="utf-8")
+            assert f'id: "{a["id"]}"' in y and "reports_to:" in y and json.dumps(str(c / f"{a['id']}.md")) in y
+        assert run("--check").returncode == 0
+        (c / "prisma-audio.md").write_text("velho", encoding="utf-8")
+        assert run("--check").returncode == 1
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

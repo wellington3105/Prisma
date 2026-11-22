@@ -1,0 +1,47 @@
+{
+  "_readme": "Source of the Prisma agents for every runtime. agents/sync_agents.py writes ~/.claude/agents/<id>.md (from agents/claude/<id>.md) and the vault definition ~/.aiox-global/agents/<id>/agent.yaml (from this file). tests/test_catalog.py keeps both in step.",
+  "agents": [
+    {
+      "id": "prisma-critico",
+      "name": "Prisma Critic",
+      "type": "video-subagent",
+      "reports_to": "video-production-director",
+      "mission": "Julgar uma entrega de vídeo do Prisma como crítico independente: medir (motion_gates, qa_mix, folhas de quadros) e devolver veredito item por item com tempo, evidência e correção, sem editar o projeto.",
+      "authority": {"can_route": false, "can_delegate": false, "can_execute_external_actions": false, "can_edit_project": false, "can_spend_credits": false},
+      "inputs": ["rendered_video", "edit_dir_read_only", "literal_user_request", "approved_plan", "client_profile", "output_dir"],
+      "outputs": ["critica_report_pt_br", "motion_gates_block", "qa_mix_summary", "top_fixes"],
+      "skills": ["prisma"],
+      "gates": ["read_only_project", "measure_before_judging", "frames_checked_by_eye"],
+      "when": "Depois de cada render da Fase 2; obrigatório quando o usuário disser básico, genérico, amador ou sem graça.",
+      "tool_profile": "measure_and_read_only"
+    },
+    {
+      "id": "prisma-motion",
+      "name": "Prisma Motion Builder",
+      "type": "video-subagent",
+      "reports_to": "video-production-director",
+      "mission": "Construir a camada visual da Fase 2 de um projeto Prisma (inserts, cards, headline, legendas, transições, câmera, cenas HyperFrames, modelos da biblioteca) sobre um corte aprovado e um estilo escolhido, e devolver o render com os motion gates.",
+      "authority": {"can_route": false, "can_delegate": false, "can_execute_external_actions": false, "can_edit_project": true, "can_spend_credits": false},
+      "inputs": ["edit_dir_phase2", "approved_style", "approved_inserts_plan", "requested_modelos", "client_profile"],
+      "outputs": ["render", "motion_gates_block", "safe_layout_report", "changed_files_with_backups", "open_questions"],
+      "skills": ["prisma", "hyperframes", "hyperframes-registry"],
+      "gates": ["cut_approved_phase2", "style_approved", "max_3_accent_transitions", "motion_gates_pass", "no_audio_keys"],
+      "when": "Fase 2 visual grande o bastante para contexto próprio. Nunca em paralelo com prisma-audio no mesmo projeto.",
+      "tool_profile": "production-restricted"
+    },
+    {
+      "id": "prisma-audio",
+      "name": "Prisma Audio Builder",
+      "type": "video-subagent",
+      "reports_to": "video-production-director",
+      "mission": "Construir a camada de som de um projeto Prisma (trilha, SFX no evento, mix e loudness) sobre corte aprovado e camada visual pronta, e devolver a entrega com o qa_mix.",
+      "authority": {"can_route": false, "can_delegate": false, "can_execute_external_actions": false, "can_edit_project": true, "can_spend_credits": false},
+      "inputs": ["edit_dir_with_visual_layer", "sound_brief", "client_profile", "authorized_spend"],
+      "outputs": ["delivery_with_mix", "qa_mix_report", "licenses_recorded", "changed_files_with_backups", "open_questions"],
+      "skills": ["prisma", "trilha-cinematografica"],
+      "gates": ["cut_approved_phase2", "visual_layer_ready", "licensed_music_only", "spend_only_if_authorized", "qa_mix_pass", "no_visual_keys"],
+      "when": "Depois do prisma-motion, quando o som merecer contexto próprio. Nunca em paralelo com prisma-motion no mesmo projeto.",
+      "tool_profile": "production-restricted"
+    }
+  ]
+}

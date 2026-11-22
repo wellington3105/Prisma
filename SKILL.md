@@ -705,7 +705,7 @@ Both tracks: scaffold with one `cp -R` of the template, describe the video in `p
 - `prisma-critico` — the independent critic (`critic-gauntlet.md`): measures and judges a render, never edits. Can run in parallel with anything.
 - `prisma-motion` — the visual layer (inserts, cards, captions, camera, transitions, HyperFrames scenes, modelos) on an approved cut and style; returns the render + motion gates.
 - `prisma-audio` — soundtrack, SFX cues and the mix; returns the delivery + `qa_mix`.
-`prisma-motion` and `prisma-audio` both write `edit-data.json`, so on one project they run **one after the other** (motion, then audio), never at the same time. Use them when a phase is large enough to deserve its own context; a small edit stays in the session. Install or update: copy `agents/claude/*.md` to `~/.claude/agents/`.
+`prisma-motion` and `prisma-audio` both write `edit-data.json`, so on one project they run **one after the other** (motion, then audio), never at the same time. Use them when a phase is large enough to deserve its own context; a small edit stays in the session. Install or update: `python agents/sync_agents.py` (the installer runs it): it writes `~/.claude/agents/<id>.md` and, when the global vault exists, `~/.aiox-global/agents/<id>/agent.yaml` (the Maestro, Hermes and Lissa read the vault, not `~/.claude/agents`). Source: `agents/claude/*.md` + `agents/agents.json`; `--check` reports drift.
 
 **The Phase-2 checks, in order (all four, every video):**
 1. `safe_layout.py <edit> --report` after `edit-data.json` is written — nothing on the face (fix with `--apply` or by hand; lock deliberate placements with `lockPos`).
