@@ -47,12 +47,13 @@ import hashlib
 import json
 import sys
 import time
+import os
 from pathlib import Path
 
 # One ledger for the whole skill install, not per-project — the entire point
 # is reuse ACROSS projects. Lives next to the skill, not in any single edit
 # dir, mirroring where cookies.txt / .env already live (skill root).
-LEDGER_PATH = Path(__file__).resolve().parent.parent / "media_ledger.json"
+LEDGER_PATH = Path(os.environ.get("PRISMA_MEDIA_LEDGER") or Path(__file__).resolve().parent.parent / "media_ledger.json")
 
 
 def sha256_file(path: Path) -> str:

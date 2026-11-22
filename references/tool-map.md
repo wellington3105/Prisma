@@ -18,7 +18,7 @@ adicionado a este mapa, ou se um item do mapa deixar de existir.
 | **Motion e Fase 2** | `scaffold_phase2`, `render_phase2`, `build_hyperframes`, `export_hyperframes`, `hf_motion_scenes`, `hf_pull_takes`, `hf_version`, `hf_parity`, `inserts_plan`, `broll_plan`, `make_card` | `hyperframes-engine.md`, `hyperframes-traps.md`, `motion-craft.md`, `direction.md`, `scenes.md` |
 | **Ritmo e cinema** | `beat_map`, `beat_edit`, `speed_ramp`, `cinema_edit` | `beat-sync.md`, `cinema-motion.md` |
 | **VFX e composição** | `chroma_key`, `person_matte`, `matte_refine`, `composite`, `detect_plane`, `camera_track`, `camera_solve`, `camera_solve_colmap` | `compositing.md`, `OPUS-VFX-3D.md` |
-| **Áudio** | `audio_chain`, `music_carve`, `volume_envelope`, `sfx_events`, `sfx_index`, `sfx_peak`, `sfx_synth`, `epidemic_music`, `treblo_music`, `deliver_mix` | `sfx-craft.md`, `soundtrack.md` |
+| **Áudio** | `audio_chain`, `music_carve`, `volume_envelope`, `sfx_events`, `sfx_index`, `sfx_peak`, `sfx_synth`, `epidemic_music`, `treblo_music`, `earshot_sfx`, `deliver_mix` | `sfx-craft.md`, `soundtrack.md` |
 | **Mídia e licença** | `pexels_search`, `wikimedia_images`, `google_images`, `media_ledger` | `SKILL.md` (Helpers) |
 | **QA e verificação** | `qa_mix`, `motion_gates`, `lint_undefined`, `regress` | `critic-gauntlet.md`, `sfx-craft.md` §14, `motion-craft.md` §2.1 |
 | **Clipping e viralização** | `clip_finder`, `viral_score` | `external-video-skills.md` #28–#33 |
