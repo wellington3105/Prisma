@@ -75,6 +75,12 @@ def test_aliases_match_routes():
         assert "Remotion-only" not in p.read_text(encoding="utf-8"), f"stale Remotion-only rule in {p.parent.name}"
 
 
+def test_modelos_check():
+    sys.path.insert(0, str(SKILL / "helpers"))
+    import modelos_receitas
+    assert modelos_receitas.check() == [], modelos_receitas.check()
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):
