@@ -344,6 +344,21 @@ def test_profile_rules_printed():
         assert "sem grão" in buf.getvalue()
 
 
+# ---------------------------------------------------------------- Task 5
+PEXELS_VIDEO = {"id": 123, "duration": 8, "user": {"name": "Ana"}, "url": "https://www.pexels.com/video/123/",
+                "video_files": [
+                    {"id": 1, "quality": "sd", "file_type": "video/mp4", "width": 360, "height": 640, "link": "https://x/sd.mp4"},
+                    {"id": 2, "quality": "hd", "file_type": "video/mp4", "width": 1080, "height": 1920, "link": "https://x/hd.mp4"},
+                    {"id": 3, "quality": "uhd", "file_type": "video/mp4", "width": 2160, "height": 3840, "link": "https://x/uhd.mp4"}]}
+
+
+def test_pick_video_file():
+    import pexels_search
+    assert pexels_search.pick_video_file(PEXELS_VIDEO)["id"] == 2
+    only4k = dict(PEXELS_VIDEO, video_files=[PEXELS_VIDEO["video_files"][2]])
+    assert pexels_search.pick_video_file(only4k, max_side=1920) is None
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]
