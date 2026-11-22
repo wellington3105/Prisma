@@ -128,3 +128,138 @@ def check() -> list[str]:
         elif m.host == "reel-fala":
             probs += _check_reel(m)
     return probs
+
+
+# ---------------------------------------------------------------- apply
+ACCENT_TRANSITIONS = ("flash", "whip-left", "whip-right", "whip-up", "whip-down", "zoom", "rgb-split", "shake")
+MAX_ACENTOS = 3
+
+
+def count_accents(plan: dict) -> list[int]:
+    """Shot indices whose incoming transition is an accent (cut and speed are not)."""
+    return [i for i, sh in enumerate(plan.get("shots", [])) if sh.get("transition") in ACCENT_TRANSITIONS]
+
+
+def _params(m: Modelo, given: dict[str, str]) -> dict[str, str]:
+    out = {}
+    for k, spec in m.dados.get("parametros", {}).items():
+        v = given.get(k, spec.get("padrao"))
+        if spec.get("valores") and v not in spec["valores"]:
+            raise SystemExit(f"{m.slug}: {k}='{v}' não é válido (use {', '.join(spec['valores'])})")
+        out[k] = v
+    return out
+
+
+def _fill(v, params: dict[str, str]):
+    if isinstance(v, str):
+        for k, p in params.items():
+            v = v.replace("{" + k + "}", str(p))
+    return v
+
+
+def _add_fx(sh: dict, fx: list[str]) -> None:
+    cur = list(sh.get("fx", []))
+    for e in fx:
+        if e not in cur:
+            cur.append(e)
+    sh["fx"] = cur
+
+
+def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params: dict[str, str]) -> None:
+    ap = m.dados.get("aplica", {})
+    for i in planos:
+        if not 0 <= i < len(shots):
+            raise SystemExit(f"{m.slug}: o plano {i} não existe (o plano tem {len(shots)} planos, de 0 a {len(shots) - 1})")
+    if m.dados.get("intervalo"):
+        ramps = ap.get("ramps", [])
+        for k, i in enumerate(planos):
+            if ramps:
+                shots[i]["ramp"] = ramps[k % len(ramps)]
+            _add_fx(shots[i], ap.get("fx", []))
+        if ap.get("transicao_primeiro"):
+            shots[planos[0]]["transition"] = ap["transicao_primeiro"]
+        _add_fx(shots[planos[-1]], ap.get("fx_ultimo", []))
+        return
+    for i in planos:
+        for campo, valor in ap.get("por_plano", {}).items():
+            shots[i][campo] = _fill(valor, params)
+        if ap.get("fx"):
+            _add_fx(shots[i], ap["fx"])
+        if ap.get("ramp_entrada"):
+            shots[i]["ramp"] = ap["ramp_entrada"]
+        if ap.get("ramp_saida"):
+            if i == 0:
+                raise SystemExit(f"{m.slug}: o plano 0 não tem plano anterior para acelerar até o corte")
+            shots[i - 1]["ramp"] = ap["ramp_saida"]
+
+
+def apply_montagem(m: Modelo, plan: dict, planos: list[int] | None, params: dict[str, str]) -> dict:
+    new = json.loads(json.dumps(plan))
+    shots = new.get("shots", [])
+    limite = MAX_ACENTOS
+    if m.nivel == "estilo":
+        limite = m.dados.get("regras", {}).get("max_acentos", MAX_ACENTOS)
+        prim = load(m.dados["regras"]["primaria"])
+        alvo = planos if planos is not None else list(range(1, len(shots)))
+        _apply_tipo_montagem(prim, shots, alvo, _params(prim, {}))
+    else:
+        if not planos:
+            raise SystemExit(f"{m.slug} é um tipo: diga em quais planos com --plano N (os planos vão de 0 a {len(shots) - 1})")
+        _apply_tipo_montagem(m, shots, planos, _params(m, params))
+    if len(count_accents(new)) > limite:
+        antes = count_accents(plan)
+        raise SystemExit(f"{m.slug}: passaria de {limite} acentos. Já há acento nos planos "
+                         f"{', '.join(map(str, antes)) or '(nenhum)'}; tire um deles antes.")
+    return new
+
+
+def _edit_dir_of(target: Path) -> Path:
+    p = target if target.is_dir() else target.parent
+    for c in [p, *p.parents][:4]:
+        if (c / "state.json").exists():
+            return c
+    return p
+
+
+def _write_with_backup(f: Path, old: dict, new: dict, slug: str) -> Path:
+    import difflib
+    import time
+    a = json.dumps(old, ensure_ascii=False, indent=2).splitlines()
+    b = json.dumps(new, ensure_ascii=False, indent=2).splitlines()
+    for line in difflib.unified_diff(a, b, f"{f.name} (antes)", f"{f.name} (depois)", lineterm="", n=1):
+        print(line)
+    bk = f.with_name(f"{f.stem}.antes-{slug}-{time.strftime('%Y%m%d-%H%M%S')}{f.suffix}")
+    n = 1
+    while bk.exists():
+        bk = f.with_name(f"{f.stem}.antes-{slug}-{time.strftime('%Y%m%d-%H%M%S')}-{n}{f.suffix}")
+        n += 1
+    bk.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+    f.write_text(json.dumps(new, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return bk
+
+
+def _record(state_dir: Path, slug: str, f: Path) -> None:
+    import time
+    sp = state_dir / "state.json"
+    if not sp.exists():
+        return
+    st = json.loads(sp.read_text(encoding="utf-8"))
+    st.setdefault("modelos", []).append({"slug": slug, "file": str(f), "when": time.strftime("%Y-%m-%d %H:%M")})
+    sp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[str, str]) -> Path:
+    """Apply a modelo to a file and return the backup path. Host comes from the recipe, not the file name."""
+    m = load(slug)
+    target = Path(target)
+    if m.host == "montagem":
+        old = json.loads(target.read_text(encoding="utf-8"))
+        if "shots" not in old:
+            raise SystemExit(f"{target} não é um plano do beat_edit (sem 'shots'); {slug} é um modelo de montagem")
+        new = apply_montagem(m, old, planos, params)
+        if new == old:
+            print(f"  {slug}: nada mudou (já aplicado)")
+        bk = _write_with_backup(target, old, new, slug)
+        _record(target.parent, slug, target)
+        return bk
+    return apply_reel_file(m, target, planos)

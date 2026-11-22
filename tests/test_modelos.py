@@ -118,6 +118,111 @@ def test_v1_set_is_complete_and_valid():
         assert todos[s].dados["regras"]["max_acentos"] == 3
 
 
+# ---------------------------------------------------------------- Task 3
+def _plan(tmp: Path, n: int, accents: dict | None = None) -> Path:
+    shots = [{"src": f"t{i}.mp4", "beats": 2} for i in range(n)]
+    for i, tr in (accents or {}).items():
+        shots[i]["transition"] = tr
+    f = tmp / "plan.json"
+    f.write_text(json.dumps({"music": "m.mp3", "beats": "b.json", "shots": shots}), encoding="utf-8")
+    return f
+
+
+def _read(f: Path) -> dict:
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+def test_whip_pan_on_shot():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 4)
+        bk = receitas().apply_file("whip-pan", f, [2], {"dir": "right"})
+        shots = _read(f)["shots"]
+        assert shots[2]["transition"] == "whip-right"
+        assert bk.exists() and "whip-pan" in bk.name
+        assert all("transition" not in shots[i] for i in (0, 1, 3))
+
+
+def test_transicao_velocidade_pairs():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 4)
+        receitas().apply_file("transicao-velocidade", f, [2], {})
+        shots = _read(f)["shots"]
+        assert shots[1]["ramp"] == "speed-out"
+        assert shots[2]["ramp"] == "speed-in" and shots[2]["transition"] == "speed"
+
+
+def test_apply_twice_is_idempotent():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 3)
+        R = receitas()
+        R.apply_file("zoom-punch", f, [1], {})
+        R.apply_file("zoom-punch", f, [1], {})
+        assert _read(f)["shots"][1]["fx"] == ["pulse"]
+
+
+def test_accent_limit():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 5, {0: "flash", 1: "whip-left", 2: "shake"})
+        before = f.read_text(encoding="utf-8")
+        try:
+            receitas().apply_file("flash", f, [3], {})
+        except SystemExit as e:
+            msg = str(e)
+        else:
+            raise AssertionError("a 4th accent must be refused")
+        assert "0, 1, 2" in msg, msg
+        assert f.read_text(encoding="utf-8") == before
+
+
+def test_estilo_montagem():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 8)
+        R = receitas()
+        R.apply_file("montagem-na-batida", f, None, {})
+        plan = _read(f)
+        assert all(plan["shots"][k]["transition"] == "speed" for k in range(1, 8))
+        assert len(R.count_accents(plan)) <= 3
+
+
+def test_velocity_edit_range():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 6)
+        receitas().apply_file("velocity-edit", f, [1, 2, 3, 4], {})
+        sh = _read(f)["shots"]
+        assert [sh[i]["ramp"] for i in (1, 2, 3, 4)] == ["ramp-out", "ramp-in", "ramp-out", "ramp-in"]
+        assert sh[1]["transition"] == "flash" and "shake@0" in sh[4]["fx"]
+        assert all("pulse" in sh[i]["fx"] for i in (1, 2, 3, 4))
+
+
+def test_state_records_modelo():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        f = _plan(d, 3)
+        (d / "state.json").write_text("{}", encoding="utf-8")
+        receitas().apply_file("flash", f, [1], {})
+        rec = json.loads((d / "state.json").read_text(encoding="utf-8"))["modelos"]
+        assert rec[-1]["slug"] == "flash" and rec[-1]["file"].endswith("plan.json")
+
+
+def test_tipo_needs_plano():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 3)
+        try:
+            receitas().apply_file("flash", f, None, {})
+        except SystemExit as e:
+            assert "--plano" in str(e)
+        else:
+            raise AssertionError("a tipo without --plano must ask for it")
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]

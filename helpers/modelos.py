@@ -4,6 +4,7 @@
   python helpers/modelos.py list [--nivel tipo|estilo] [--familia F]
   python helpers/modelos.py show <slug>
   python helpers/modelos.py check
+  python helpers/modelos.py apply <slug> <plan.json | edit dir> [--plano N ...] [--param k=v ...]
 
 A *tipo* is one technique (whip pan, speed ramp, zoom punch…); an *estilo* combines tipos with
 rules (max 3 accent transitions, a primary transition). Recipes live in `modelos/`; see
@@ -41,6 +42,11 @@ def main() -> int:
     sh = sub.add_parser("show")
     sh.add_argument("slug")
     sub.add_parser("check")
+    apl = sub.add_parser("apply")
+    apl.add_argument("slug")
+    apl.add_argument("alvo", type=Path, help="plan.json do beat_edit, ou a pasta edit/ de um Reel de fala")
+    apl.add_argument("--plano", type=int, nargs="+", help="índices dos planos (montagem) ou dos cortes (Reel de fala)")
+    apl.add_argument("--param", action="append", default=[], help="k=v, ex.: dir=right")
     a = ap.parse_args()
 
     if a.cmd == "list":
@@ -52,6 +58,10 @@ def main() -> int:
         m = R.load(a.slug)
         print((m.pasta / "MODELO.md").read_text(encoding="utf-8"))
         print("receita:", json.dumps(m.dados, ensure_ascii=False, indent=1))
+    elif a.cmd == "apply":
+        params = dict(p.split("=", 1) for p in a.param)
+        bk = R.apply_file(a.slug, a.alvo, a.plano, params)
+        print(f"  {a.slug} aplicado · backup: {bk}")
     else:
         probs = R.check()
         for p in probs:
