@@ -263,3 +263,110 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
         _record(target.parent, slug, target)
         return bk
     return apply_reel_file(m, target, planos)
+
+
+# ---------------------------------------------------------------- reel-fala
+REEL_ACCENTS = REEL_TRANSITIONS
+
+
+def _edit_data_path(edit: Path) -> Path | None:
+    for c in (edit / "remotion" / "public" / "edit-data.json", edit / "edit-data.json"):
+        if c.exists():
+            return c
+    return None
+
+
+def _merge(dst: dict, src: dict) -> dict:
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _merge(dst[k], v)
+        else:
+            dst[k] = json.loads(json.dumps(v))
+    return dst
+
+
+def _cut_times(ed_path: Path) -> list[float]:
+    sp = ed_path.parent / "segments.json"
+    if not sp.exists():
+        raise SystemExit(f"falta {sp} (os pontos de corte vêm dele); rode o scaffold da Fase 2 antes")
+    segs = json.loads(sp.read_text(encoding="utf-8")).get("segments", [])
+    return [round(float(s["start"]), 3) for s in segs[1:]]
+
+
+def _reel_tipos(m: Modelo) -> list[Modelo]:
+    return [load(t) for t in m.dados.get("tipos", [])] if m.nivel == "estilo" else [m]
+
+
+def apply_reel(m: Modelo, edit: Path, planos: list[int] | None = None) -> tuple[dict, dict | None]:
+    """New state.json and new edit-data.json (None when the edit-data does not exist yet). Pure: writes nothing."""
+    sp = edit / "state.json"
+    st = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+    if int(st.get("phase", 1) or 1) < 2:
+        raise SystemExit(f"{m.slug}: só depois do corte aprovado (state.json phase ≥ 2; está em {st.get('phase', 1)})")
+    st = json.loads(json.dumps(st))
+    style = st.setdefault("style", {})
+    if m.nivel == "estilo":
+        _merge(style, m.dados.get("padroes", {}).get("style", {}))
+    for t in _reel_tipos(m):
+        _merge(style, t.dados.get("style", {}))
+    st["awaitingStyle"] = True
+
+    ed_path = _edit_data_path(edit)
+    if ed_path is None:
+        return st, None
+    ed = json.loads(ed_path.read_text(encoding="utf-8"))
+    limite = m.dados.get("regras", {}).get("max_acentos", MAX_ACENTOS)
+    for t in _reel_tipos(m):
+        patch = t.dados.get("edit_data", {})
+        if "camera" in patch:
+            ed.setdefault("camera", {})
+            _merge(ed["camera"], patch["camera"])
+        tr = patch.get("transitions_em_cada_corte")
+        if tr:
+            cuts = _cut_times(ed_path)
+            if planos:
+                bad = [i for i in planos if not 0 <= i < len(cuts)]
+                if bad:
+                    raise SystemExit(f"{t.slug}: cortes {bad} não existem (há {len(cuts)}, de 0 a {len(cuts) - 1})")
+                cuts = [cuts[i] for i in planos]
+            existentes = [x for x in ed.get("transitions", []) if round(float(x.get("at", -1)), 3) not in cuts]
+            novas = existentes + [dict(tr, at=c) for c in cuts]
+            if sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS) > limite:
+                todos = ", ".join(f"{i}: {c}s" for i, c in enumerate(_cut_times(ed_path)))
+                raise SystemExit(f"{t.slug}: passaria de {limite} acentos. Escolha até {limite} cortes com --plano "
+                                 f"(cortes: {todos}).")
+            ed["transitions"] = sorted(novas, key=lambda x: x["at"])
+    return st, ed
+
+
+def _print_profile_rules(st: dict) -> None:
+    cli = st.get("client")
+    if not cli:
+        return
+    import importlib
+    import client_profile
+    cp = importlib.reload(client_profile)
+    if not cp.ppath(cli).exists():
+        return
+    prof = cp.load(cli)
+    print(f"  regras do perfil '{cli}' (confira contra o modelo):")
+    for r in prof.get("rules", []):
+        print(f"    - {r['text']}")
+
+
+def apply_reel_file(m: Modelo, target: Path, planos: list[int] | None) -> Path:
+    edit = _edit_dir_of(Path(target))
+    sp = edit / "state.json"
+    if not sp.exists():
+        raise SystemExit(f"{m.slug}: não achei state.json em {edit} (passe a pasta edit/ do Reel)")
+    old_st = json.loads(sp.read_text(encoding="utf-8"))
+    new_st, new_ed = apply_reel(m, edit, planos)
+    _print_profile_rules(old_st)
+    bk = _write_with_backup(sp, old_st, new_st, m.slug)
+    if new_ed is None:
+        print(f"  {m.slug}: ainda não há edit-data.json; a camada concreta entra quando a Fase 2 for montada")
+    else:
+        ed_path = _edit_data_path(edit)
+        bk = _write_with_backup(ed_path, json.loads(ed_path.read_text(encoding="utf-8")), new_ed, m.slug)
+    _record(edit, m.slug, Path(target))
+    return bk

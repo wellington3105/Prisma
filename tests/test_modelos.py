@@ -223,6 +223,127 @@ def test_tipo_needs_plano():
             raise AssertionError("a tipo without --plano must ask for it")
 
 
+# ---------------------------------------------------------------- Task 4
+def _reel(tmp: Path, phase: int = 2, segments: int | None = 3, edit_data: bool = True, client: str | None = None) -> Path:
+    edit = tmp / "edit"
+    pub = edit / "remotion" / "public"
+    pub.mkdir(parents=True)
+    st = {"phase": phase, "style": {"edit": "broll", "elements": {}}}
+    if client:
+        st["client"] = client
+    (edit / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    if edit_data:
+        (pub / "edit-data.json").write_text(json.dumps({"camera": {"enabled": True, "zooms": [1.0], "pushIn": 0.0}}), encoding="utf-8")
+    if segments:
+        segs = [{"start": round(i * 4.0, 2), "dur": 4.0} for i in range(segments)]
+        (pub / "segments.json").write_text(json.dumps({"segments": segs}), encoding="utf-8")
+    return edit
+
+
+def _ed(edit: Path) -> dict:
+    return json.loads((edit / "remotion" / "public" / "edit-data.json").read_text(encoding="utf-8"))
+
+
+def _st(edit: Path) -> dict:
+    return json.loads((edit / "state.json").read_text(encoding="utf-8"))
+
+
+def _refused(fn, *args) -> str:
+    try:
+        fn(*args)
+    except SystemExit as e:
+        return str(e)
+    raise AssertionError("expected a refusal")
+
+
+def test_reel_refuses_before_phase2():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), phase=1)
+        before = (edit / "state.json").read_text(encoding="utf-8")
+        msg = _refused(receitas().apply_file, "push-in", edit, None, {})
+        assert "corte aprovado" in msg
+        assert (edit / "state.json").read_text(encoding="utf-8") == before
+
+
+def test_push_in():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d))
+        receitas().apply_file("push-in", edit, None, {})
+        assert _ed(edit)["camera"]["pushIn"] == 0.04 and _ed(edit)["camera"]["enabled"] is True
+        st = _st(edit)
+        assert st["style"]["elements"]["zoomAuto"] is True and st["awaitingStyle"] is True
+        assert st["modelos"][-1]["slug"] == "push-in"
+
+
+def test_flash_on_every_cut():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), segments=3)
+        R = receitas()
+        R.apply_file("flash-na-troca", edit, None, {})
+        R.apply_file("flash-na-troca", edit, None, {})          # idempotent: no duplicates
+        tr = _ed(edit)["transitions"]
+        assert [(t["at"], t["type"]) for t in tr] == [(4.0, "flash"), (8.0, "flash")], tr
+
+
+def test_flash_too_many_cuts_needs_plano():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), segments=8)
+        R = receitas()
+        msg = _refused(R.apply_file, "flash-na-troca", edit, None, {})
+        assert "--plano" in msg and "4.0" in msg
+        R.apply_file("flash-na-troca", edit, [0, 3], {})
+        assert [t["at"] for t in _ed(edit)["transitions"]] == [4.0, 16.0]
+
+
+def test_flash_without_segments():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), segments=None)
+        before = json.dumps(_ed(edit))
+        msg = _refused(receitas().apply_file, "flash-na-troca", edit, None, {})
+        assert "segments.json" in msg
+        assert json.dumps(_ed(edit)) == before and "flashCut" not in _st(edit)["style"]["elements"]
+
+
+def test_only_style_when_no_edit_data():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d), edit_data=False)
+        receitas().apply_file("zoom-nos-cortes", edit, None, {})
+        assert _st(edit)["style"]["elements"]["zoomCuts"] is True
+        assert not (edit / "remotion" / "public" / "edit-data.json").exists()
+
+
+def test_estilo_reel():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = _reel(Path(d))
+        receitas().apply_file("reel-fala-broll", edit, None, {})
+        st = _st(edit)
+        assert st["style"]["captions"] == "scatter" and st["style"]["elements"]["brollFull"] is True
+        cam = _ed(edit)["camera"]
+        assert cam["zooms"] == [1.06, 1.12, 1.04, 1.10] and cam["pushIn"] == 0.04
+
+
+def test_profile_rules_printed():
+    import io
+    from contextlib import redirect_stdout
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "perfis" / "x").mkdir(parents=True)
+        (d / "perfis" / "x" / "profile.json").write_text(json.dumps({"cliente": "x", "rules": [{"text": "sem grão", "origin": "t"}]}), encoding="utf-8")
+        edit = _reel(d, client="x")
+        buf = io.StringIO()
+        with env(PRISMA_PERFIS=d / "perfis"), redirect_stdout(buf):
+            receitas().apply_file("push-in", edit, None, {})
+        assert "sem grão" in buf.getvalue()
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]
