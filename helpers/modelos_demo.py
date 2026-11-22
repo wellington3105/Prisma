@@ -198,3 +198,66 @@ def render_demo(slug: str, force: bool = False) -> Path:
           "-vf", "scale=540:-1", dest / "poster.jpg"])
     print(f"  {slug}: demo → {demo}  (G0/G2 PASS)")
     return demo
+
+
+# ---------------------------------------------------------------- gallery
+def demo_status(slug: str) -> str:
+    """✅ when the demo exists and its gates passed, else 🧪."""
+    try:
+        d = galeria_root() / slug
+    except SystemExit:
+        return "🧪"
+    g = d / "gates.json"
+    if not (d / "demo.mp4").exists() or not g.exists():
+        return "🧪"
+    st = {x.get("id"): x.get("status") for x in json.loads(g.read_text(encoding="utf-8"))}
+    return "✅" if st.get("G0") == "PASS" and st.get("G2") == "PASS" else "🧪"
+
+
+def _secao(m: R.Modelo, titulo: str) -> str:
+    txt = (m.pasta / "MODELO.md").read_text(encoding="utf-8") if (m.pasta / "MODELO.md").exists() else ""
+    if titulo not in txt:
+        return ""
+    return txt.split(titulo, 1)[1].split("\n## ", 1)[0].strip()
+
+
+def build_galeria() -> Path:
+    import html
+    root = galeria_root()
+    root.mkdir(parents=True, exist_ok=True)
+    todos = R.load_all()
+    grupos: dict[tuple[str, str], list[R.Modelo]] = {}
+    for m in sorted(todos.values(), key=lambda m: (m.nivel != "estilo", m.familia, m.slug)):
+        grupos.setdefault((m.nivel, m.familia), []).append(m)
+    cards = []
+    for (nivel, familia), ms in grupos.items():
+        cards.append(f'<h2>{"Estilos" if nivel == "estilo" else "Tipos"} · {html.escape(familia)}</h2><div class="grid">')
+        for m in ms:
+            nome = html.escape(m.dados.get("nome", m.slug))
+            ok = demo_status(m.slug) == "✅"
+            midia = (f'<video src="{m.slug}/demo.mp4" poster="{m.slug}/poster.jpg" autoplay loop muted playsinline></video>'
+                     if ok else '<div class="vazio">sem demo</div>')
+            tipos = ""
+            if m.nivel == "estilo":
+                tipos = "<p class='tipos'>Tipos: " + ", ".join(html.escape(t) for t in m.dados.get("tipos", [])) + "</p>"
+            cards.append(f'<article>{midia}<h3>{nome}</h3><p class="slug">{m.slug} · {m.host}</p>'
+                         f'<p>{html.escape(_secao(m, "## O que é"))}</p>'
+                         f'<p><b>Quando usar:</b> {html.escape(_secao(m, "## Quando usar"))}</p>{tipos}'
+                         f'<p class="gates">{"G0 ✓ G2 ✓" if ok else ""}</p></article>')
+        cards.append("</div>")
+    page = f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Prisma · modelos de edição</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#0d0d10;color:#e8e8ea;margin:32px}}
+h1{{font-weight:700}} h2{{margin-top:40px;border-bottom:1px solid #2a2a30;padding-bottom:6px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px}}
+article{{background:#17171c;border-radius:10px;padding:12px}}
+video,.vazio{{width:100%;aspect-ratio:9/16;border-radius:8px;background:#000;object-fit:cover}}
+.vazio{{display:flex;align-items:center;justify-content:center;color:#777}}
+h3{{margin:10px 0 2px}} .slug{{color:#888;font-size:12px;margin:0 0 6px}} p{{font-size:13px;line-height:1.4}}
+.gates{{color:#3ce6ac;font-size:12px}} .tipos{{color:#aaa}}
+</style></head><body><h1>Prisma · biblioteca de modelos de edição</h1>
+<p>{len(todos)} modelos · aplique com <code>helpers/modelos.py apply &lt;slug&gt;</code></p>
+{''.join(cards)}</body></html>"""
+    out = root / "index.html"
+    out.write_text(page, encoding="utf-8")
+    return out

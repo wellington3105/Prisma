@@ -431,6 +431,38 @@ def test_reel_demo_baseline_is_neutral():
     assert ed["camera"]["pushIn"] == 0.05                  # input untouched
 
 
+# ---------------------------------------------------------------- Task 7
+def _two_modelos_one_demo(d: Path):
+    lib, gal = d / "lib", d / "gal"
+    write_modelo(lib, "tipo", "whip-pan", WHIP)
+    write_modelo(lib, "tipo", "flash", dict(WHIP, aplica={"por_plano": {"transition": "flash"}}, parametros={}))
+    (gal / "whip-pan").mkdir(parents=True)
+    (gal / "whip-pan" / "demo.mp4").write_bytes(b"x")
+    (gal / "whip-pan" / "poster.jpg").write_bytes(b"x")
+    (gal / "whip-pan" / "gates.json").write_text(json.dumps([{"id": "G0", "status": "PASS"}, {"id": "G2", "status": "PASS"}]),
+                                                 encoding="utf-8")
+    return lib, gal
+
+
+def test_galeria_missing_demo():
+    with tempfile.TemporaryDirectory() as d:
+        lib, gal = _two_modelos_one_demo(Path(d))
+        with env(PRISMA_MODELOS=lib, PRISMA_MODELOS_GALERIA=gal):
+            html = _demo().build_galeria().read_text(encoding="utf-8")
+        assert html.count("<video") == 1 and "sem demo" in html
+        assert 'src="whip-pan/demo.mp4"' in html
+
+
+def test_list_shows_demo_status():
+    with tempfile.TemporaryDirectory() as d:
+        lib, gal = _two_modelos_one_demo(Path(d))
+        e = dict(os.environ, PRISMA_MODELOS=str(lib), PRISMA_MODELOS_GALERIA=str(gal))
+        out = subprocess.run([sys.executable, str(HELPERS / "modelos.py"), "list"], capture_output=True, text=True,
+                             encoding="utf-8", env=e).stdout
+        line = {l.split()[3]: l for l in out.splitlines() if l.strip()}
+        assert "✅" in line["whip-pan"] and "🧪" in line["flash"], out
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]

@@ -7,6 +7,7 @@
   python helpers/modelos.py apply <slug> <plan.json | edit dir> [--plano N ...] [--param k=v ...]
   python helpers/modelos.py material [--force]          # demo material, once (Pexels + Epidemic)
   python helpers/modelos.py demo <slug>|--all [--force]  # render demos into the gallery
+  python helpers/modelos.py galeria [--abrir]           # build the gallery page
 
 A *tipo* is one technique (whip pan, speed ramp, zoom punch…); an *estilo* combines tipos with
 rules (max 3 accent transitions, a primary transition). Recipes live in `modelos/`; see
@@ -55,13 +56,16 @@ def main() -> int:
     dm.add_argument("slug", nargs="?")
     dm.add_argument("--all", action="store_true")
     dm.add_argument("--force", action="store_true")
+    gl = sub.add_parser("galeria")
+    gl.add_argument("--abrir", action="store_true")
     a = ap.parse_args()
 
     if a.cmd == "list":
         for slug, m in sorted(R.load_all().items(), key=lambda kv: (kv[1].nivel, kv[1].familia, kv[0])):
             if (a.nivel and m.nivel != a.nivel) or (a.familia and m.familia != a.familia):
                 continue
-            print(f"  {m.nivel:<6} {m.familia:<12} {slug:<24} {_primeira_linha(m, '## O que é')[:70]}")
+            import modelos_demo as D
+            print(f"  {D.demo_status(slug)} {m.nivel:<6} {m.familia:<12} {slug:<24} {_primeira_linha(m, '## O que é')[:70]}")
     elif a.cmd == "show":
         m = R.load(a.slug)
         print((m.pasta / "MODELO.md").read_text(encoding="utf-8"))
@@ -89,6 +93,12 @@ def main() -> int:
         if falhas:
             print(f"  sem demo: {', '.join(falhas)}")
             return 1
+    elif a.cmd == "galeria":
+        import modelos_demo as D
+        page = D.build_galeria()
+        print(f"  galeria: {page}")
+        if a.abrir:
+            print(f"  abrir: {page.as_uri()}")
     else:
         probs = R.check()
         for p in probs:
