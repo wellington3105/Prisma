@@ -359,6 +359,78 @@ def test_pick_video_file():
     assert pexels_search.pick_video_file(only4k, max_side=1920) is None
 
 
+# ---------------------------------------------------------------- Task 6
+def _fake_material(tmp: Path) -> dict:
+    beats = tmp / "beats.json"
+    beats.write_text(json.dumps({"tempo": 120, "fps": 30, "beats": [round(0.5 * i, 3) for i in range(64)], "drops": []}),
+                     encoding="utf-8")
+    return {"clips": [tmp / f"c{i}.mp4" for i in range(4)], "music": tmp / "m.mp3", "beats": beats, "start_beat": 8}
+
+
+def _demo():
+    import modelos_demo
+    receitas()
+    return importlib.reload(modelos_demo)
+
+
+def test_demo_plan_tipo():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        D = _demo()
+        plan = D.demo_plan(D.R.load("whip-pan"), _fake_material(Path(d)))
+        assert len(plan["shots"]) == 4
+        whips = [i for i, sh in enumerate(plan["shots"]) if str(sh.get("transition", "")).startswith("whip-")]
+        assert whips == [2], plan["shots"]
+        assert plan["start_beat"] == 8 and plan["size"] == "1080x1920"
+
+
+def test_demo_plan_estilo():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        D = _demo()
+        plan = D.demo_plan(D.R.load("montagem-na-batida"), _fake_material(Path(d)))
+        assert len(D.R.count_accents(plan)) <= 3
+        assert all(sh.get("transition") == "speed" for sh in plan["shots"][1:])
+
+
+def test_demo_plan_velocity_edit_uses_all_shots():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        D = _demo()
+        plan = D.demo_plan(D.R.load("velocity-edit"), _fake_material(Path(d)))
+        assert all("pulse" in sh.get("fx", []) for sh in plan["shots"])
+
+
+def test_galeria_root_env():
+    with tempfile.TemporaryDirectory() as d:
+        with env(PRISMA_MODELOS_GALERIA=d):
+            assert _demo().galeria_root() == Path(d)
+        old = {k: os.environ.pop(k, None) for k in ("PRISMA_MODELOS_GALERIA", "OneDrive", "OneDriveConsumer")}
+        try:
+            try:
+                _demo().galeria_root()
+            except SystemExit as e:
+                assert "PRISMA_MODELOS_GALERIA" in str(e) and "OneDrive" in str(e)
+            else:
+                raise AssertionError("no gallery root must be refused")
+        finally:
+            for k, v in old.items():
+                if v is not None:
+                    os.environ[k] = v
+
+
+def test_reel_demo_baseline_is_neutral():
+    D = _demo()
+    ed = {"camera": {"enabled": True, "zooms": [1.1, 1.18], "pushIn": 0.05, "targetX": 0.5},
+          "transitions": [{"at": 3.0, "type": "flash"}], "hook": {"enabled": True},
+          "inserts": [{"id": "i01"}], "splitInserts": [{"id": "s01"}], "highlights": {"enabled": True, "items": [1]}}
+    out = D.neutral_edit_data(ed)
+    assert out["camera"]["zooms"] == [1.0] and out["camera"]["pushIn"] == 0.0 and out["camera"]["targetX"] == 0.5
+    assert out["transitions"] == [] and out["hook"]["enabled"] is False
+    assert out["inserts"] == [] and out["splitInserts"] == [] and out["highlights"]["enabled"] is False
+    assert ed["camera"]["pushIn"] == 0.05                  # input untouched
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]

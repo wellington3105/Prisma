@@ -5,6 +5,8 @@
   python helpers/modelos.py show <slug>
   python helpers/modelos.py check
   python helpers/modelos.py apply <slug> <plan.json | edit dir> [--plano N ...] [--param k=v ...]
+  python helpers/modelos.py material [--force]          # demo material, once (Pexels + Epidemic)
+  python helpers/modelos.py demo <slug>|--all [--force]  # render demos into the gallery
 
 A *tipo* is one technique (whip pan, speed ramp, zoom punch…); an *estilo* combines tipos with
 rules (max 3 accent transitions, a primary transition). Recipes live in `modelos/`; see
@@ -47,6 +49,12 @@ def main() -> int:
     apl.add_argument("alvo", type=Path, help="plan.json do beat_edit, ou a pasta edit/ de um Reel de fala")
     apl.add_argument("--plano", type=int, nargs="+", help="índices dos planos (montagem) ou dos cortes (Reel de fala)")
     apl.add_argument("--param", action="append", default=[], help="k=v, ex.: dir=right")
+    mt = sub.add_parser("material")
+    mt.add_argument("--force", action="store_true")
+    dm = sub.add_parser("demo")
+    dm.add_argument("slug", nargs="?")
+    dm.add_argument("--all", action="store_true")
+    dm.add_argument("--force", action="store_true")
     a = ap.parse_args()
 
     if a.cmd == "list":
@@ -62,6 +70,25 @@ def main() -> int:
         params = dict(p.split("=", 1) for p in a.param)
         bk = R.apply_file(a.slug, a.alvo, a.plano, params)
         print(f"  {a.slug} aplicado · backup: {bk}")
+    elif a.cmd == "material":
+        import modelos_demo as D
+        mat = D.material(a.force)
+        print(f"  material: {len(mat['clips'])} clipes, música {mat['music'].name}, beat inicial {mat['start_beat']}")
+    elif a.cmd == "demo":
+        import modelos_demo as D
+        slugs = sorted(R.load_all()) if a.all else [a.slug]
+        if not slugs or slugs == [None]:
+            raise SystemExit("diga o modelo (demo <slug>) ou use --all")
+        falhas = []
+        for s in slugs:
+            try:
+                D.render_demo(s, a.force)
+            except SystemExit as e:
+                falhas.append(s)
+                print(f"  {s}: {e}")
+        if falhas:
+            print(f"  sem demo: {', '.join(falhas)}")
+            return 1
     else:
         probs = R.check()
         for p in probs:
