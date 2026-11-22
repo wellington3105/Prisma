@@ -69,6 +69,23 @@ PKG = {"name": "hyperframes", "private": True, "type": "module",
 HFJSON = {"$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
           "paths": {"blocks": "compositions", "components": "compositions/components", "assets": "assets"},
           "media": {"autoProxy": True}, "authoringSkill": "general-video"}
+# The plan vocabulary. One source of truth: validate_plan() rejects anything else, and the
+# editing-models library (modelos_receitas.check) validates its recipes against these.
+TRANSITIONS = ("cut", "flash", "whip-left", "whip-right", "whip-up", "whip-down", "zoom", "rgb-split", "shake", "speed")
+FX = ("pulse", "push", "shake")      # "shake@N" validates by its prefix
+
+
+def validate_plan(plan: dict) -> None:
+    """Unknown transition / fx names used to be ignored in silence (the shot rendered as a plain cut)."""
+    for i, sh in enumerate(plan.get("shots", [])):
+        tr = sh.get("transition", plan.get("default_transition", "cut"))
+        if tr not in TRANSITIONS:
+            raise SystemExit(f"beat_edit: unknown transition '{tr}' in shot {i} (known: {', '.join(TRANSITIONS)})")
+        for e in sh.get("fx", plan.get("default_fx", [])):
+            if e.split("@")[0] not in FX:
+                raise SystemExit(f"beat_edit: unknown fx '{e}' in shot {i} (known: {', '.join(FX)}, shake@N)")
+
+
 T = 0.20  # each half of a transition (s): exit = last T of the outgoing shot, entrance = first T of the next
 
 
@@ -228,6 +245,7 @@ def main() -> None:
     a = ap.parse_args()
     base = a.plan.parent
     plan = json.loads(a.plan.read_text(encoding="utf-8"))
+    validate_plan(plan)
     bd = json.loads((base / plan["beats"]).read_text(encoding="utf-8"))
     beats = bd["beats"]
     fps = plan.get("fps", bd.get("fps", 30))
