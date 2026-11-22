@@ -1,0 +1,24 @@
+{
+  "slug": "whip-pan",
+  "nivel": "tipo",
+  "nome": "Whip pan",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "por_plano": {
+      "transition": "whip-{dir}"
+    }
+  },
+  "parametros": {
+    "dir": {
+      "valores": [
+        "left",
+        "right",
+        "up",
+        "down"
+      ],
+      "padrao": "left"
+    }
+  }
+}

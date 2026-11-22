@@ -1,0 +1,18 @@
+{
+  "slug": "push-in",
+  "nivel": "tipo",
+  "nome": "Push-in lento",
+  "familia": "camera",
+  "host": "reel-fala",
+  "acento": false,
+  "style": {
+    "elements": {
+      "zoomAuto": true
+    }
+  },
+  "edit_data": {
+    "camera": {
+      "pushIn": 0.04
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "slug": "zoom-through",
+  "nivel": "tipo",
+  "nome": "Zoom through",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "por_plano": {
+      "transition": "zoom"
+    }
+  }
+}

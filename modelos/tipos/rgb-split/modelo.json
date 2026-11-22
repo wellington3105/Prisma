@@ -1,0 +1,13 @@
+{
+  "slug": "rgb-split",
+  "nivel": "tipo",
+  "nome": "RGB split",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "por_plano": {
+      "transition": "rgb-split"
+    }
+  }
+}

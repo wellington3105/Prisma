@@ -31,6 +31,7 @@ from pathlib import Path
 import requests
 
 SEARCH_URL = "https://api.pexels.com/v1/search"
+VIDEO_SEARCH_URL = "https://api.pexels.com/videos/search"
 
 
 def load_api_key() -> str:
@@ -61,6 +62,26 @@ def search(query: str, api_key: str, count: int, orientation: str | None) -> lis
     return resp.json().get("photos", [])
 
 
+def search_videos(query: str, api_key: str, count: int, orientation: str | None,
+                  min_s: float | None, max_s: float | None) -> list[dict]:
+    params: dict[str, str | int] = {"query": query, "per_page": max(1, min(count * 4, 80))}
+    if orientation:
+        params["orientation"] = orientation
+    resp = requests.get(VIDEO_SEARCH_URL, headers={"Authorization": api_key}, params=params, timeout=60)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Pexels returned {resp.status_code}: {resp.text[:300]}")
+    vids = resp.json().get("videos", [])
+    return [v for v in vids if (min_s is None or v.get("duration", 0) >= min_s)
+            and (max_s is None or v.get("duration", 0) <= max_s)]
+
+
+def pick_video_file(video: dict, max_side: int = 1920) -> dict | None:
+    """The largest MP4 rendition whose long side fits max_side (1080x1920 for a Reel), or None."""
+    ok = [f for f in video.get("video_files", [])
+          if f.get("file_type") == "video/mp4" and max(f.get("width") or 0, f.get("height") or 0) <= max_side]
+    return max(ok, key=lambda f: (f.get("width") or 0) * (f.get("height") or 0), default=None)
+
+
 def download(url: str, dest: Path) -> None:
     r = requests.get(url, timeout=120)
     r.raise_for_status()
@@ -79,9 +100,35 @@ def main() -> None:
     ap.add_argument("--orientation", choices=["landscape", "portrait", "square"], default=None)
     ap.add_argument("--size", choices=["original", "large2x", "large", "medium"], default="large2x",
                     help="Pexels rendition to download (default large2x)")
+    ap.add_argument("--videos", action="store_true", help="search videos instead of photos (MP4, long side <= 1920)")
+    ap.add_argument("--min-s", type=float, default=None, help="videos: minimum duration (s)")
+    ap.add_argument("--max-s", type=float, default=None, help="videos: maximum duration (s)")
     args = ap.parse_args()
 
     api_key = load_api_key()
+    if args.videos:
+        vids = search_videos(args.query, api_key, args.count, args.orientation, args.min_s, args.max_s)
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        saved = 0
+        for v in vids:
+            if saved >= args.count:
+                break
+            f = pick_video_file(v)
+            if not f:
+                continue
+            dest = args.out_dir / f"pexels-{v['id']}.mp4"
+            try:
+                download(f["link"], dest)
+            except Exception as e:
+                print(f"  x failed {v.get('id')}: {e}")
+                continue
+            saved += 1
+            print(f"  + {dest}  id={v['id']}  {f.get('width')}x{f.get('height')}  {v.get('duration')}s  "
+                  f"(video: {v.get('user', {}).get('name', '?')}, {v.get('url', '')})")
+        print(f"downloaded {saved}/{args.count} videos → {args.out_dir}")
+        if saved:
+            print("attribution: videos from Pexels — keep the author credits above.")
+        return
     photos = search(args.query, api_key, args.count, args.orientation)
     if not photos:
         sys.exit(f"no results for: {args.query}")

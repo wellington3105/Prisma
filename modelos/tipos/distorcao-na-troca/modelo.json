@@ -1,0 +1,18 @@
+{
+  "slug": "distorcao-na-troca",
+  "nivel": "tipo",
+  "nome": "Distorção na troca",
+  "familia": "transicao",
+  "host": "reel-fala",
+  "acento": true,
+  "style": {
+    "elements": {
+      "shaderCut": true
+    }
+  },
+  "edit_data": {
+    "transitions_em_cada_corte": {
+      "type": "displace"
+    }
+  }
+}
