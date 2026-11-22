@@ -42,7 +42,21 @@ HERE = Path(__file__).resolve().parent
 SR = 48000
 LUFS_T, LUFS_TOL, TP_MAX = -14.0, 1.0, -1.0
 LOUD_DB, QUIET_DB, MASK_DB = 1.5, -22.0, -3.0
-MUSIC_OK = (-26.0, -12.0)  # dB trilha/voz sob a fala (esperado -15 a -20)
+MUSIC_OK = (-26.0, -12.0)  # dB trilha/voz sob a fala: tolerância
+MUSIC_TARGET = (-20.0, -15.0)  # o alvo dentro dela
+
+
+def music_verdict(rel: float) -> tuple[str, str]:
+    """('OK' | 'fora do alvo' | 'alta' | 'inaudível', mensagem). Antes, -13 dB saía como "OK" ao lado de
+    "esperado -15 a -20": a tolerância passava, mas o alvo não."""
+    alvo = f"alvo -15 a -20, tolerância {MUSIC_OK[0]:.0f} a {MUSIC_OK[1]:.0f}"
+    if MUSIC_TARGET[0] <= rel <= MUSIC_TARGET[1]:
+        return "OK", f"{rel:+.1f} dB vs voz ({alvo})"
+    if MUSIC_OK[0] <= rel <= MUSIC_OK[1]:
+        return "fora do alvo", f"{rel:+.1f} dB vs voz, dentro da tolerância mas fora do alvo -15 a -20"
+    if rel > MUSIC_OK[1]:
+        return "alta", f"trilha alta sob a fala ({rel:+.1f} dB vs voz; {alvo})"
+    return "inaudível", f"trilha quase inaudível sob a fala ({rel:+.1f} dB vs voz; {alvo})"
 
 
 def db(x: float) -> float:
@@ -199,12 +213,10 @@ def audit_music(voz: np.ndarray, mus: np.ndarray, flags: list[str]) -> None:
     if act.sum() < 5:
         return
     rel = db(np.sqrt((m[act] ** 2).mean())) - db(np.sqrt((v[act] ** 2).mean()))
-    ok = MUSIC_OK[0] <= rel <= MUSIC_OK[1]
-    print(f"\ntrilha sob a fala: {rel:+.1f} dB vs voz (esperado -15 a -20) {'OK' if ok else '⚠'}")
-    if rel > MUSIC_OK[1]:
-        flags.append(f"trilha alta sob a fala ({rel:+.1f} dB vs voz; esperado -15 a -20)")
-    elif rel < MUSIC_OK[0]:
-        flags.append(f"trilha quase inaudível sob a fala ({rel:+.1f} dB vs voz)")
+    status, msg = music_verdict(rel)
+    print(f"\ntrilha sob a fala: {msg} {'OK' if status == 'OK' else '⚠ ' + status}")
+    if status in ("alta", "inaudível"):
+        flags.append(msg)
 
 
 def fix_peak(edit: Path, final: Path) -> Path | None:

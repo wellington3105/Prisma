@@ -72,17 +72,23 @@ HFJSON = {"$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
 # The plan vocabulary. One source of truth: validate_plan() rejects anything else, and the
 # editing-models library (modelos_receitas.check) validates its recipes against these.
 TRANSITIONS = ("cut", "flash", "whip-left", "whip-right", "whip-up", "whip-down", "zoom", "rgb-split", "shake", "speed")
-FX = ("pulse", "push", "shake")      # "shake@N" validates by its prefix
+FX = ("pulse", "push")              # plus "shake@N" (N = beat of the shot), see valid_fx
+
+
+def valid_fx(e: str) -> bool:
+    """What shot_comp actually renders: pulse, push, shake@<int>. A bare "shake" used to be ignored."""
+    import re
+    return e in FX or re.fullmatch(r"shake@\d+", e) is not None
 
 
 def validate_plan(plan: dict) -> None:
     """Unknown transition / fx names used to be ignored in silence (the shot rendered as a plain cut)."""
     for i, sh in enumerate(plan.get("shots", [])):
-        tr = sh.get("transition", plan.get("default_transition", "cut"))
+        tr = sh.get("transition", "cut")
         if tr not in TRANSITIONS:
             raise SystemExit(f"beat_edit: unknown transition '{tr}' in shot {i} (known: {', '.join(TRANSITIONS)})")
-        for e in sh.get("fx", plan.get("default_fx", [])):
-            if e.split("@")[0] not in FX:
+        for e in sh.get("fx", []):
+            if not valid_fx(e):
                 raise SystemExit(f"beat_edit: unknown fx '{e}' in shot {i} (known: {', '.join(FX)}, shake@N)")
 
 

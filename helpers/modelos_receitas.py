@@ -84,7 +84,7 @@ def _check_montagem(m: Modelo) -> list[str]:
             probs.append(f"{m.slug}: ramp '{r}' não existe no speed_ramp")
     fx = list(ap.get("fx", [])) + list(ap.get("fx_ultimo", [])) + list(ap.get("fx_primeiro", []))
     for e in fx:
-        if e.split("@")[0] not in beat_edit.FX:
+        if not beat_edit.valid_fx(e):
             probs.append(f"{m.slug}: fx '{e}' não existe no beat_edit")
     for tr in [ap.get("transicao_primeiro")] if ap.get("transicao_primeiro") else []:
         if tr not in beat_edit.TRANSITIONS:
@@ -186,9 +186,13 @@ def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params
                 shots[i]["ramp"] = ramps[k % len(ramps)]
             _add_fx(shots[i], ap.get("fx", []))
         if ap.get("transicao_primeiro"):
+            if planos[0] == 0:
+                raise SystemExit(f"{m.slug}: o plano 0 não tem corte de entrada; comece o intervalo no plano 1")
             shots[planos[0]]["transition"] = ap["transicao_primeiro"]
         _add_fx(shots[planos[-1]], ap.get("fx_ultimo", []))
         return
+    if 0 in planos and "transition" in ap.get("por_plano", {}):
+        raise SystemExit(f"{m.slug}: o plano 0 não tem corte de entrada (a transição entra NO plano); use 1 ou mais")
     for i in planos:
         for campo, valor in ap.get("por_plano", {}).items():
             shots[i][campo] = _fill(valor, params)
@@ -219,7 +223,7 @@ def apply_montagem(m: Modelo, plan: dict, planos: list[int] | None, params: dict
         if not planos:
             raise SystemExit(f"{m.slug} é um tipo: diga em quais planos com --plano N (os planos vão de 0 a {len(shots) - 1})")
         _apply_tipo_montagem(m, shots, planos, _params(m, params))
-    if len(count_accents(new)) > limite:
+    if len(count_accents(new)) > limite and len(count_accents(new)) > len(count_accents(plan)):
         antes = count_accents(plan)
         raise SystemExit(f"{m.slug}: passaria de {limite} acentos. Já há acento nos planos "
                          f"{', '.join(map(str, antes)) or '(nenhum)'}; tire um deles antes.")
@@ -271,7 +275,8 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
             raise SystemExit(f"{target} não é um plano do beat_edit (sem 'shots'); {slug} é um modelo de montagem")
         new = apply_montagem(m, old, planos, params)
         if new == old:
-            print(f"  {slug}: nada mudou (já aplicado)")
+            print(f"  {slug}: nada mudou (já aplicado); nada foi gravado")
+            return []
         bk = _write_with_backup(target, old, new, slug)
         _record(target.parent, slug, target)
         return [bk]
@@ -344,7 +349,9 @@ def apply_reel(m: Modelo, edit: Path, planos: list[int] | None = None) -> tuple[
                 cuts = [cuts[i] for i in planos]
             existentes = [x for x in ed.get("transitions", []) if round(float(x.get("at", -1)), 3) not in cuts]
             novas = existentes + [dict(tr, at=c) for c in cuts]
-            if sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS) > limite:
+            n_novas = sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS)
+            n_antes = sum(1 for x in ed.get("transitions", []) if x.get("type", "flash") in REEL_ACCENTS)
+            if n_novas > limite and n_novas > n_antes:
                 ja = [x for x in existentes if x.get("type", "flash") in REEL_ACCENTS]
                 todos = ", ".join(f"{i}: {c}s" for i, c in enumerate(_cut_times(ed_path)))
                 if ja:
@@ -383,6 +390,11 @@ def apply_reel_file(m: Modelo, target: Path, planos: list[int] | None) -> list[P
         raise SystemExit(f"{m.slug}: não achei state.json em {edit} (passe a pasta edit/ do Reel)")
     old_st = json.loads(sp.read_text(encoding="utf-8"))
     new_st, new_ed = apply_reel(m, edit, planos)
+    ed_path0 = _edit_data_path(edit)
+    old_ed = json.loads(ed_path0.read_text(encoding="utf-8")) if ed_path0 else None
+    if new_st == old_st and new_ed == old_ed:
+        print(f"  {m.slug}: nada mudou (já aplicado); nada foi gravado")
+        return []
     new_st.setdefault("modelos", []).append({"slug": m.slug, "file": str(target), "when": time.strftime("%Y-%m-%d %H:%M")})
     _print_profile_rules(old_st)
     bks: list[Path] = []
