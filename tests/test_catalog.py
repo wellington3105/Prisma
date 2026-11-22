@@ -81,6 +81,20 @@ def test_modelos_check():
     assert modelos_receitas.check() == [], modelos_receitas.check()
 
 
+def test_agents_are_wired():
+    """agents/claude/*.md: valid frontmatter, and every helper/reference they cite exists."""
+    agents = sorted((SKILL / "agents" / "claude").glob("*.md"))
+    assert {a.stem for a in agents} == {"prisma-critico", "prisma-motion", "prisma-audio"}
+    for a in agents:
+        txt = a.read_text(encoding="utf-8")
+        head = txt.split("---")[1]
+        assert f"name: {a.stem}" in head and "description:" in head and "tools:" in head, a.name
+        for h in set(re.findall(r"helpers/([a-z0-9_]+)\.py", txt)):
+            assert (SKILL / "helpers" / f"{h}.py").exists(), f"{a.name} cita helpers/{h}.py, que não existe"
+        for r in set(re.findall(r"references/([\w.-]+\.md)", txt)):
+            assert (REF / r).exists(), f"{a.name} cita references/{r}, que não existe"
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):
