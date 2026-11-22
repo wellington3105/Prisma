@@ -1,0 +1,13 @@
+{
+  "slug": "speed-ramp",
+  "nivel": "tipo",
+  "nome": "Speed ramp",
+  "familia": "velocidade",
+  "host": "montagem",
+  "acento": false,
+  "aplica": {
+    "por_plano": {
+      "ramp": "whip-slow"
+    }
+  }
+}

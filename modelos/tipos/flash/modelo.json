@@ -1,0 +1,13 @@
+{
+  "slug": "flash",
+  "nivel": "tipo",
+  "nome": "Flash",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "por_plano": {
+      "transition": "flash"
+    }
+  }
+}

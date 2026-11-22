@@ -1,0 +1,24 @@
+{
+  "slug": "montagem-na-batida",
+  "nivel": "estilo",
+  "nome": "Montagem na batida",
+  "familia": "montagem",
+  "host": "montagem",
+  "tipos": [
+    "transicao-velocidade",
+    "whip-pan",
+    "flash",
+    "zoom-punch",
+    "shake-impacto"
+  ],
+  "regras": {
+    "primaria": "transicao-velocidade",
+    "max_acentos": 3
+  },
+  "sinais": [
+    "todo corte cai na batida",
+    "velocidade é o padrão, não o efeito",
+    "a transição primária é a de velocidade",
+    "no máximo 3 acentos contados"
+  ]
+}

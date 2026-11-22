@@ -1,0 +1,34 @@
+{
+  "slug": "reel-fala-broll",
+  "nivel": "estilo",
+  "nome": "Reel de fala com B-roll em tela cheia",
+  "familia": "reel",
+  "host": "reel-fala",
+  "tipos": [
+    "zoom-nos-cortes",
+    "push-in"
+  ],
+  "regras": {
+    "primaria": "corte-seco",
+    "max_acentos": 3
+  },
+  "padroes": {
+    "style": {
+      "edit": "broll",
+      "headline": "misto",
+      "captions": "scatter",
+      "elements": {
+        "zoomCuts": true,
+        "zoomAuto": true,
+        "brollFull": true
+      }
+    }
+  },
+  "sinais": [
+    "o apresentador fala e o B-roll cobre as emendas em tela cheia",
+    "headline mista no gancho",
+    "legenda scatter",
+    "zoom nos cortes",
+    "no máximo 3 acentos"
+  ]
+}

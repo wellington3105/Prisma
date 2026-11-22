@@ -101,6 +101,23 @@ def test_estilo_unknown_tipo():
         assert any("nao-existe" in p for p in probs), probs
 
 
+# ---------------------------------------------------------------- Task 2
+V1_TIPOS = {"speed-ramp", "transicao-velocidade", "bullet-time", "velocity-edit", "whip-pan", "flash", "zoom-through",
+            "rgb-split", "shake-impacto", "zoom-punch", "zoom-nos-cortes", "push-in", "flash-na-troca", "distorcao-na-troca"}
+V1_ESTILOS = {"montagem-na-batida", "reel-fala-broll"}
+
+
+def test_v1_set_is_complete_and_valid():
+    os.environ.pop("PRISMA_MODELOS", None)
+    R = receitas()
+    todos = R.load_all()
+    assert {s for s, m in todos.items() if m.nivel == "tipo"} == V1_TIPOS, sorted(todos)
+    assert {s for s, m in todos.items() if m.nivel == "estilo"} == V1_ESTILOS
+    assert R.check() == [], R.check()
+    for s in V1_ESTILOS:
+        assert todos[s].dados["regras"]["max_acentos"] == 3
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]

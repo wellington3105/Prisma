@@ -1,0 +1,13 @@
+{
+  "slug": "zoom-punch",
+  "nivel": "tipo",
+  "nome": "Zoom punch",
+  "familia": "camera",
+  "host": "montagem",
+  "acento": false,
+  "aplica": {
+    "fx": [
+      "pulse"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "slug": "velocity-edit",
+  "nivel": "tipo",
+  "nome": "Velocity edit",
+  "familia": "velocidade",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "ramps": [
+      "ramp-out",
+      "ramp-in"
+    ],
+    "fx": [
+      "pulse"
+    ],
+    "transicao_primeiro": "flash",
+    "fx_ultimo": [
+      "shake@0"
+    ]
+  },
+  "intervalo": true
+}

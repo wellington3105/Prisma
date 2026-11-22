@@ -1,0 +1,15 @@
+{
+  "slug": "transicao-velocidade",
+  "nivel": "tipo",
+  "nome": "Transição por velocidade",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": false,
+  "aplica": {
+    "ramp_saida": "speed-out",
+    "ramp_entrada": "speed-in",
+    "por_plano": {
+      "transition": "speed"
+    }
+  }
+}

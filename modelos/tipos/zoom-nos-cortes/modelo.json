@@ -1,0 +1,23 @@
+{
+  "slug": "zoom-nos-cortes",
+  "nivel": "tipo",
+  "nome": "Zoom nos cortes",
+  "familia": "camera",
+  "host": "reel-fala",
+  "acento": false,
+  "style": {
+    "elements": {
+      "zoomCuts": true
+    }
+  },
+  "edit_data": {
+    "camera": {
+      "zooms": [
+        1.06,
+        1.12,
+        1.04,
+        1.1
+      ]
+    }
+  }
+}

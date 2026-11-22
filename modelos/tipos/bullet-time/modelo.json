@@ -1,0 +1,13 @@
+{
+  "slug": "bullet-time",
+  "nivel": "tipo",
+  "nome": "Bullet time",
+  "familia": "velocidade",
+  "host": "montagem",
+  "acento": false,
+  "aplica": {
+    "por_plano": {
+      "ramp": "bullet"
+    }
+  }
+}

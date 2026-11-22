@@ -1,0 +1,13 @@
+{
+  "slug": "shake-impacto",
+  "nivel": "tipo",
+  "nome": "Shake de impacto",
+  "familia": "transicao",
+  "host": "montagem",
+  "acento": true,
+  "aplica": {
+    "por_plano": {
+      "transition": "shake"
+    }
+  }
+}
