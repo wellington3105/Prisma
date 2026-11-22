@@ -621,6 +621,12 @@ def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -
 # makes a lead override safe: it buys antecipation only where there is room for it.
 JCUT_LEAD_FRAMES = 5
 JCUT_TAIL_TRIM_FRAMES = 2
+# L-cut (2026-11-22): the mirror of the J. The outgoing take's SOUND runs on while the
+# incoming take's PICTURE is already up, entering `lag` frames before its own range —
+# the face appears before the voice. Opt-in per EDL: "jcut": {"mode": "l"} or
+# "alternate" (J, L, J… per seam, as in the "VSL" edits). Default stays "j".
+JCUT_LAG_FRAMES = 4
+JCUT_MODES = ("j", "l", "alternate")
 
 
 def jcut_settings(edl: dict, fps: int) -> dict | None:
@@ -638,6 +644,8 @@ def jcut_settings(edl: dict, fps: int) -> dict | None:
     return {
         "lead_frames": max(0, int(cfg.get("lead_frames", JCUT_LEAD_FRAMES))),
         "tail_trim_frames": max(0, int(cfg.get("tail_trim_frames", JCUT_TAIL_TRIM_FRAMES))),
+        "lag_frames": max(0, int(cfg.get("lag_frames", JCUT_LAG_FRAMES))),
+        "mode": cfg.get("mode", "j") if cfg.get("mode", "j") in JCUT_MODES else "j",
         "fps": fps,
     }
 
@@ -714,25 +722,38 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
         takes.append({"src": src, "r": r, "start": start, "end": end,
                       "tail": tail, "avail": avail, "head": head})
 
-    # lead_frames[i] belongs to the seam INTO take i (0 for the first take).
+    # lead_frames[i] / lag_frames[i] belong to the seam INTO take i (0 for the first take).
     lead_frames = [0] * n
+    lag_frames = [0] * n
+    seams = [""] * n
+    mode = cfg.get("mode", "j")
     for i in range(1, n):
         prev, cur = takes[i - 1], takes[i]
-        room = max(0.0, prev["avail"] - prev["tail"]) + cur["head"]
-        lead_frames[i] = max(0, min(cfg["lead_frames"], int(room * fps + 1e-6)))
+        kind = "L" if mode == "l" or (mode == "alternate" and i % 2 == 0) else "J"
+        seams[i] = kind
+        if kind == "J":
+            room = max(0.0, prev["avail"] - prev["tail"]) + cur["head"]
+            lead_frames[i] = max(0, min(cfg["lead_frames"], int(room * fps + 1e-6)))
+        else:
+            # the incoming picture starts before its range: only as much source as exists there
+            lag_frames[i] = max(0, min(cfg.get("lag_frames", JCUT_LAG_FRAMES), int(cur["start"] * fps + 1e-6)))
 
     plan: list[dict] = []
     a_off = v_off = 0.0
     for i, t in enumerate(takes):
         lead = lead_frames[i] / fps
+        lag = lag_frames[i] / fps
+        next_lag = lag_frames[i + 1] / fps if i + 1 < n else 0.0
         a_in, a_out = t["start"], t["end"] - t["tail"]
-        v_in = t["start"] + lead
-        v_out = a_out
+        v_in = t["start"] + lead - lag
+        v_out = a_out - next_lag
         plan.append({
             "i": i, "src": t["src"], "range": t["r"],
             "a_in": a_in, "a_out": a_out, "a_off": a_off,
             "v_in": v_in, "v_out": v_out, "v_off": v_off,
             "lead_frames": lead_frames[i],
+            "lag_frames": lag_frames[i],
+            "seam": seams[i],
             "lead_capped": i > 0 and lead_frames[i] < cfg["lead_frames"],
             "head_silence_ms": round(t["head"] * 1000) if t["head"] is not None else None,
             "tail_frames": round(t["tail"] * fps),
@@ -863,7 +884,9 @@ def extract_and_assemble_jcut(
         lead_note = ""
         if i > 0:
             lead_note = f"  lead {p['lead_frames']}f"
-            if p["lead_capped"]:
+            if p.get("seam") == "L":
+                lead_note = f"  L {p['lag_frames']}f (imagem antes da voz)"
+            elif p["lead_capped"]:
                 lead_note += f" (limitado: cabeça {p['head_silence_ms']}ms de silêncio)"
         print(f"  [{i:02d}] {r['source']}  v {p['v_in']:7.2f}-{p['v_out']:7.2f}"
               f"  a {p['a_in']:7.2f}-{p['a_out']:7.2f}"

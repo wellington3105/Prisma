@@ -1,0 +1,13 @@
+{
+  "slug": "l-cut",
+  "nivel": "tipo",
+  "nome": "J e L alternados",
+  "familia": "corte",
+  "host": "corte",
+  "acento": false,
+  "edl": {
+    "jcut": {
+      "mode": "alternate"
+    }
+  }
+}

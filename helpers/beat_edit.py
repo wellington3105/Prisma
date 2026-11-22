@@ -78,7 +78,7 @@ FX = ("pulse", "push")              # plus "shake@N" (N = beat of the shot), see
 def valid_fx(e: str) -> bool:
     """What shot_comp actually renders: pulse, push, shake@<int>. A bare "shake" used to be ignored."""
     import re
-    return e in FX or re.fullmatch(r"shake@\d+", e) is not None
+    return e in FX or re.fullmatch(r"(shake|freeze)@\d+", e) is not None
 
 
 def validate_plan(plan: dict) -> None:
@@ -119,7 +119,10 @@ def whip_axis(tr: str, W: int, H: int):
 
 
 def shot_comp(cid: str, asset: str, media_start: float, dur: float, beat_offsets: list[float],
-              tr_in: str, tr_out: str, fx: list[str], W: int, H: int) -> str:
+              tr_in: str, tr_out: str, fx: list[str], W: int, H: int,
+              freeze: tuple[str, float] | None = None) -> str:
+    """freeze = (still image, shot time): from that time the picture holds on that frame
+    (a white flash and a small punch mark the hold), inside the layer pulse/shake move."""
     whip = tr_in.startswith("whip-") or tr_out.startswith("whip-")
     base_filter = f"url(#blur-{cid})" if whip else f"url(#rgb-{cid})" if tr_in == "rgb-split" else "none"
     js = [f'tl.set("#push-{cid}", {{scale:1}}, 0);', f'tl.set("#frame-{cid}", {{scale:1, x:0, y:0, rotation:0}}, 0);',
@@ -157,11 +160,22 @@ def shot_comp(cid: str, asset: str, media_start: float, dur: float, beat_offsets
                 js.append(f'tl.fromTo("#frame-{cid}", {{scale:1.045}}, {{scale:1, duration:{gap * 0.8:.3f}, ease:"power2.out", immediateRender:false}}, {bt});')
         elif e == "push":
             js.append(f'tl.fromTo("#push-{cid}", {{scale:1}}, {{scale:1.08, duration:{dur}, ease:"none", immediateRender:false}}, 0);')
+        elif e.startswith("freeze@"):
+            continue                       # drawn below from `freeze`
         elif e.startswith("shake@"):
             k = int(e.split("@")[1])
             bt = beat_offsets[min(k, len(beat_offsets) - 1)]
             for j, (dx, dy, rot) in enumerate([(18, -10, 1.2), (-14, 8, -1), (10, -6, 0.6), (-6, 4, -0.4), (0, 0, 0)]):
                 js.append(f'tl.to("#frame-{cid}", {{x:{dx}, y:{dy}, rotation:{rot}, duration:0.045, ease:"none"}}, {f3(bt + j * 0.045)});')
+    freeze_html = ""
+    if freeze:
+        img, ft = freeze
+        freeze_html = (f'\n          <img id="fz-{cid}" src="{img}" style="position:absolute;inset:0;width:100%;height:100%;'
+                       f'object-fit:cover;opacity:0;filter:saturate(0.9) contrast(1.06)">')
+        extra += f'\n        <div id="fzf-{cid}" style="position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none"></div>'
+        js.append(f'tl.set("#fz-{cid}", {{opacity:1}}, {ft});')
+        js.append(f'tl.fromTo("#fzf-{cid}", {{opacity:0.85}}, {{opacity:0, duration:0.22, ease:"power2.out", immediateRender:false}}, {ft});')
+        js.append(f'tl.fromTo("#frame-{cid}", {{scale:1.05}}, {{scale:1, duration:0.3, ease:"power3.out", immediateRender:false}}, {ft});')
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
   <head><meta charset="UTF-8"></head>
@@ -185,7 +199,7 @@ def shot_comp(cid: str, asset: str, media_start: float, dur: float, beat_offsets
           </filter>
         </svg>
         <div id="push-{cid}" class="layer"><div id="frame-{cid}" class="layer">
-          <video id="v-{cid}" class="clip" src="{asset}" data-start="0" data-duration="{dur}" data-media-start="{media_start}" data-track-index="0" muted playsinline></video>
+          <video id="v-{cid}" class="clip" src="{asset}" data-start="0" data-duration="{dur}" data-media-start="{media_start}" data-track-index="0" muted playsinline></video>{freeze_html}
         </div></div>{extra}
       </div>
       <script>
@@ -344,8 +358,17 @@ def main() -> None:
             asset, ms = f"assets/video/{dst.name}", s.get("in", 0)
             note = f"src {ms}s"
         tr_out = shots[k + 1]["tr"] if k + 1 < len(shots) else "cut"
+        freeze = None
+        fz = next((e for e in s.get("fx", []) if e.startswith("freeze@")), None)
+        if fz:
+            ft = s["offs"][min(int(fz.split("@")[1]), len(s["offs"]) - 1)]
+            still = out / "assets/video" / f"{cid}_freeze.jpg"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{ms + ft:.4f}", "-i", str(out / asset),
+                            "-frames:v", "1", "-q:v", "2", str(still)], check=True)
+            freeze = (f"assets/video/{still.name}", ft)
         (out / f"compositions/{cid}.html").write_text(
-            shot_comp(cid, asset, ms, s["dur"], s["offs"], s["tr"], tr_out, s.get("fx", []), W, H), encoding="utf-8")
+            shot_comp(cid, asset, ms, s["dur"], s["offs"], s["tr"], tr_out, s.get("fx", []), W, H, freeze=freeze),
+            encoding="utf-8")
         hosts.append(f'    <div id="{cid}" class="clip" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" '
                      f'data-start="{s["start"]}" data-duration="{s["dur"]}" data-track-index="0" data-track-kind="video" '
                      f'data-width="{W}" data-height="{H}" style="z-index:{10 + k % 2}"></div>')

@@ -83,7 +83,7 @@ def _check_montagem(m: Modelo) -> list[str]:
         if r not in speed_ramp.PRESETS:
             probs.append(f"{m.slug}: ramp '{r}' não existe no speed_ramp")
     fx = list(ap.get("fx", [])) + list(ap.get("fx_ultimo", [])) + list(ap.get("fx_primeiro", []))
-    for e in fx:
+    for e in [x for f in fx for x in _expand(f, params)]:
         if not beat_edit.valid_fx(e):
             probs.append(f"{m.slug}: fx '{e}' não existe no beat_edit")
     for tr in [ap.get("transicao_primeiro")] if ap.get("transicao_primeiro") else []:
@@ -112,8 +112,8 @@ def check() -> list[str]:
             probs.append(f"{pasta}: slug '{m.slug}' difere do nome da pasta")
         if m.nivel not in NIVEIS:
             probs.append(f"{pasta}: nivel '{m.nivel}' (use tipo ou estilo)")
-        if m.host not in ("montagem", "reel-fala"):
-            probs.append(f"{pasta}: host '{m.host}' (use montagem ou reel-fala)")
+        if m.host not in ("montagem", "reel-fala", "corte"):
+            probs.append(f"{pasta}: host '{m.host}' (use montagem, reel-fala ou corte)")
         sheet = m.pasta / "MODELO.md"
         txt = sheet.read_text(encoding="utf-8") if sheet.exists() else ""
         for sec in SHEET_SECTIONS:
@@ -127,6 +127,11 @@ def check() -> list[str]:
             probs += _check_montagem(m)
         elif m.host == "reel-fala":
             probs += _check_reel(m)
+        elif m.host == "corte":
+            import render
+            mode = (m.dados.get("edl", {}).get("jcut") or {}).get("mode")
+            if mode is not None and mode not in render.JCUT_MODES:
+                probs.append(f"{m.slug}: jcut.mode '{mode}' não existe no render (use {', '.join(render.JCUT_MODES)})")
     return probs
 
 
@@ -197,7 +202,7 @@ def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params
         for campo, valor in ap.get("por_plano", {}).items():
             shots[i][campo] = _fill(valor, params)
         if ap.get("fx"):
-            _add_fx(shots[i], ap["fx"])
+            _add_fx(shots[i], [_fill(e, params) for e in ap["fx"]])
         if ap.get("ramp_entrada"):
             _set_ramp(shots[i], ap["ramp_entrada"])
         if ap.get("ramp_saida"):
@@ -280,7 +285,26 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
         bk = _write_with_backup(target, old, new, slug)
         _record(target.parent, slug, target)
         return [bk]
+    if m.host == "corte":
+        return apply_corte_file(m, target)
     return apply_reel_file(m, target, planos)
+
+
+def apply_corte_file(m: Modelo, target: Path) -> list[Path]:
+    """Host "corte": the Phase-1 EDL (edl.json). Allowed before the cut is approved — it IS the cut."""
+    edit = _edit_dir_of(Path(target))
+    f = Path(target) if Path(target).is_file() else edit / "edl.json"
+    if not f.exists():
+        raise SystemExit(f"{m.slug}: não achei {f}")
+    old = json.loads(f.read_text(encoding="utf-8"))
+    new = _merge(json.loads(json.dumps(old)), m.dados.get("edl", {}))
+    if new == old:
+        print(f"  {m.slug}: nada mudou (já aplicado); nada foi gravado")
+        return []
+    bk = _write_with_backup(f, old, new, m.slug)
+    _record(edit, m.slug, f)
+    print(f"  {m.slug}: re-renderize o corte (render.py) para ver o efeito")
+    return [bk]
 
 
 # ---------------------------------------------------------------- reel-fala

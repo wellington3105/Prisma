@@ -178,6 +178,19 @@ def clear_demo(slug: str) -> None:
         (d / f).unlink(missing_ok=True)
 
 
+def _render_corte(m: R.Modelo, work: Path) -> Path:
+    """Host "corte": the Phase-1 fixture EDL (9 ranges of the regression clip) with the recipe's
+    EDL patch, rendered by render.py."""
+    edl = json.loads((SKILL / "tests" / "fixture" / "edl_input.json").read_text(encoding="utf-8"))
+    edl["sources"] = {k: str((SKILL / "tests" / "fixture" / "cayenne_clip.mp4").resolve()) for k in edl["sources"]}
+    edl = R._merge(edl, m.dados.get("edl", {}))
+    f = work / "edl.json"
+    f.write_text(json.dumps(edl, ensure_ascii=False, indent=1), encoding="utf-8")
+    out = work / "cut.mp4"
+    _run([PY, HERE / "render.py", f, "-o", out, "--no-subtitles"], log=work / "render.log")
+    return out
+
+
 def render_demo(slug: str, force: bool = False) -> Path:
     import motion_gates
     m = R.load(slug)
@@ -190,7 +203,8 @@ def render_demo(slug: str, force: bool = False) -> Path:
         clear_demo(slug)
     work = galeria_root() / "_work" / slug
     work.mkdir(parents=True, exist_ok=True)
-    video = _render_montagem(m, work) if m.host == "montagem" else _render_reel(m, work)
+    video = (_render_montagem(m, work) if m.host == "montagem" else
+             _render_corte(m, work) if m.host == "corte" else _render_reel(m, work))
     res = motion_gates.run_render(video, work / "look", "reels", None)
     gates = {g["id"]: g for g in res["gates"]}
     dest.mkdir(parents=True, exist_ok=True)

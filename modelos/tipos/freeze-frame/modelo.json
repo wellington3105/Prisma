@@ -1,0 +1,23 @@
+{
+  "slug": "freeze-frame",
+  "nivel": "tipo",
+  "nome": "Freeze frame",
+  "familia": "velocidade",
+  "host": "montagem",
+  "acento": false,
+  "aplica": {
+    "fx": [
+      "freeze@{beat}"
+    ]
+  },
+  "parametros": {
+    "beat": {
+      "valores": [
+        "1",
+        "2",
+        "3"
+      ],
+      "padrao": "1"
+    }
+  }
+}
