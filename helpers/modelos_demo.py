@@ -111,7 +111,7 @@ def demo_plan(m: R.Modelo, mat: dict) -> dict:
             "fps": 30, "size": "1080x1920", "music_fade_out": 0.3, "fade_out": 0.3, "sfx": True, "shots": shots}
     if m.nivel == "estilo":
         return R.apply_montagem(m, plan, None, {})
-    planos = list(range(DEMO_SHOTS)) if m.dados.get("intervalo") else [2]
+    planos = list(range(1, DEMO_SHOTS)) if m.dados.get("intervalo") else [2]   # plano 0 has no incoming cut
     return R.apply_montagem(m, plan, planos, {})
 
 
@@ -171,6 +171,26 @@ def _render_reel(m: R.Modelo, work: Path) -> Path:
     return max(outs, key=lambda p: p.stat().st_mtime)
 
 
+def clear_demo(slug: str) -> None:
+    """A forced re-render starts clean: a render that then fails must not leave the old demo marked ✅."""
+    d = galeria_root() / slug
+    for f in ("demo.mp4", "gates.json", "poster.jpg"):
+        (d / f).unlink(missing_ok=True)
+
+
+def _render_corte(m: R.Modelo, work: Path) -> Path:
+    """Host "corte": the Phase-1 fixture EDL (9 ranges of the regression clip) with the recipe's
+    EDL patch, rendered by render.py."""
+    edl = json.loads((SKILL / "tests" / "fixture" / "edl_input.json").read_text(encoding="utf-8"))
+    edl["sources"] = {k: str((SKILL / "tests" / "fixture" / "cayenne_clip.mp4").resolve()) for k in edl["sources"]}
+    edl = R._merge(edl, m.dados.get("edl", {}))
+    f = work / "edl.json"
+    f.write_text(json.dumps(edl, ensure_ascii=False, indent=1), encoding="utf-8")
+    out = work / "cut.mp4"
+    _run([PY, HERE / "render.py", f, "-o", out, "--no-subtitles"], log=work / "render.log")
+    return out
+
+
 def render_demo(slug: str, force: bool = False) -> Path:
     import motion_gates
     m = R.load(slug)
@@ -179,9 +199,12 @@ def render_demo(slug: str, force: bool = False) -> Path:
     if demo.exists() and not force:
         print(f"  {slug}: demo já existe (use --force para refazer)")
         return demo
+    if force:
+        clear_demo(slug)
     work = galeria_root() / "_work" / slug
     work.mkdir(parents=True, exist_ok=True)
-    video = _render_montagem(m, work) if m.host == "montagem" else _render_reel(m, work)
+    video = (_render_montagem(m, work) if m.host == "montagem" else
+             _render_corte(m, work) if m.host == "corte" else _render_reel(m, work))
     res = motion_gates.run_render(video, work / "look", "reels", None)
     gates = {g["id"]: g for g in res["gates"]}
     dest.mkdir(parents=True, exist_ok=True)
@@ -228,10 +251,11 @@ def build_galeria() -> Path:
     todos = R.load_all()
     grupos: dict[tuple[str, str], list[R.Modelo]] = {}
     for m in sorted(todos.values(), key=lambda m: (m.nivel != "estilo", m.familia, m.slug)):
-        grupos.setdefault((m.nivel, m.familia), []).append(m)
+        grupos.setdefault((m.nivel, "" if m.nivel == "estilo" else m.familia), []).append(m)
     cards = []
     for (nivel, familia), ms in grupos.items():
-        cards.append(f'<h2>{"Estilos" if nivel == "estilo" else "Tipos"} · {html.escape(familia)}</h2><div class="grid">')
+        titulo = "Estilos" if nivel == "estilo" else f"Tipos · {html.escape(familia)}"
+        cards.append(f'<h2>{titulo}</h2><div class="grid">')
         for m in ms:
             nome = html.escape(m.dados.get("nome", m.slug))
             ok = demo_status(m.slug) == "✅"

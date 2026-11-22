@@ -83,8 +83,8 @@ def _check_montagem(m: Modelo) -> list[str]:
         if r not in speed_ramp.PRESETS:
             probs.append(f"{m.slug}: ramp '{r}' não existe no speed_ramp")
     fx = list(ap.get("fx", [])) + list(ap.get("fx_ultimo", [])) + list(ap.get("fx_primeiro", []))
-    for e in fx:
-        if e.split("@")[0] not in beat_edit.FX:
+    for e in [x for f in fx for x in _expand(f, params)]:
+        if not beat_edit.valid_fx(e):
             probs.append(f"{m.slug}: fx '{e}' não existe no beat_edit")
     for tr in [ap.get("transicao_primeiro")] if ap.get("transicao_primeiro") else []:
         if tr not in beat_edit.TRANSITIONS:
@@ -112,8 +112,8 @@ def check() -> list[str]:
             probs.append(f"{pasta}: slug '{m.slug}' difere do nome da pasta")
         if m.nivel not in NIVEIS:
             probs.append(f"{pasta}: nivel '{m.nivel}' (use tipo ou estilo)")
-        if m.host not in ("montagem", "reel-fala"):
-            probs.append(f"{pasta}: host '{m.host}' (use montagem ou reel-fala)")
+        if m.host not in ("montagem", "reel-fala", "corte"):
+            probs.append(f"{pasta}: host '{m.host}' (use montagem, reel-fala ou corte)")
         sheet = m.pasta / "MODELO.md"
         txt = sheet.read_text(encoding="utf-8") if sheet.exists() else ""
         for sec in SHEET_SECTIONS:
@@ -127,6 +127,11 @@ def check() -> list[str]:
             probs += _check_montagem(m)
         elif m.host == "reel-fala":
             probs += _check_reel(m)
+        elif m.host == "corte":
+            import render
+            mode = (m.dados.get("edl", {}).get("jcut") or {}).get("mode")
+            if mode is not None and mode not in render.JCUT_MODES:
+                probs.append(f"{m.slug}: jcut.mode '{mode}' não existe no render (use {', '.join(render.JCUT_MODES)})")
     return probs
 
 
@@ -186,14 +191,18 @@ def _apply_tipo_montagem(m: Modelo, shots: list[dict], planos: list[int], params
                 shots[i]["ramp"] = ramps[k % len(ramps)]
             _add_fx(shots[i], ap.get("fx", []))
         if ap.get("transicao_primeiro"):
+            if planos[0] == 0:
+                raise SystemExit(f"{m.slug}: o plano 0 não tem corte de entrada; comece o intervalo no plano 1")
             shots[planos[0]]["transition"] = ap["transicao_primeiro"]
         _add_fx(shots[planos[-1]], ap.get("fx_ultimo", []))
         return
+    if 0 in planos and "transition" in ap.get("por_plano", {}):
+        raise SystemExit(f"{m.slug}: o plano 0 não tem corte de entrada (a transição entra NO plano); use 1 ou mais")
     for i in planos:
         for campo, valor in ap.get("por_plano", {}).items():
             shots[i][campo] = _fill(valor, params)
         if ap.get("fx"):
-            _add_fx(shots[i], ap["fx"])
+            _add_fx(shots[i], [_fill(e, params) for e in ap["fx"]])
         if ap.get("ramp_entrada"):
             _set_ramp(shots[i], ap["ramp_entrada"])
         if ap.get("ramp_saida"):
@@ -219,7 +228,7 @@ def apply_montagem(m: Modelo, plan: dict, planos: list[int] | None, params: dict
         if not planos:
             raise SystemExit(f"{m.slug} é um tipo: diga em quais planos com --plano N (os planos vão de 0 a {len(shots) - 1})")
         _apply_tipo_montagem(m, shots, planos, _params(m, params))
-    if len(count_accents(new)) > limite:
+    if len(count_accents(new)) > limite and len(count_accents(new)) > len(count_accents(plan)):
         antes = count_accents(plan)
         raise SystemExit(f"{m.slug}: passaria de {limite} acentos. Já há acento nos planos "
                          f"{', '.join(map(str, antes)) or '(nenhum)'}; tire um deles antes.")
@@ -271,11 +280,31 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
             raise SystemExit(f"{target} não é um plano do beat_edit (sem 'shots'); {slug} é um modelo de montagem")
         new = apply_montagem(m, old, planos, params)
         if new == old:
-            print(f"  {slug}: nada mudou (já aplicado)")
+            print(f"  {slug}: nada mudou (já aplicado); nada foi gravado")
+            return []
         bk = _write_with_backup(target, old, new, slug)
         _record(target.parent, slug, target)
         return [bk]
+    if m.host == "corte":
+        return apply_corte_file(m, target)
     return apply_reel_file(m, target, planos)
+
+
+def apply_corte_file(m: Modelo, target: Path) -> list[Path]:
+    """Host "corte": the Phase-1 EDL (edl.json). Allowed before the cut is approved — it IS the cut."""
+    edit = _edit_dir_of(Path(target))
+    f = Path(target) if Path(target).is_file() else edit / "edl.json"
+    if not f.exists():
+        raise SystemExit(f"{m.slug}: não achei {f}")
+    old = json.loads(f.read_text(encoding="utf-8"))
+    new = _merge(json.loads(json.dumps(old)), m.dados.get("edl", {}))
+    if new == old:
+        print(f"  {m.slug}: nada mudou (já aplicado); nada foi gravado")
+        return []
+    bk = _write_with_backup(f, old, new, m.slug)
+    _record(edit, m.slug, f)
+    print(f"  {m.slug}: re-renderize o corte (render.py) para ver o efeito")
+    return [bk]
 
 
 # ---------------------------------------------------------------- reel-fala
@@ -344,7 +373,9 @@ def apply_reel(m: Modelo, edit: Path, planos: list[int] | None = None) -> tuple[
                 cuts = [cuts[i] for i in planos]
             existentes = [x for x in ed.get("transitions", []) if round(float(x.get("at", -1)), 3) not in cuts]
             novas = existentes + [dict(tr, at=c) for c in cuts]
-            if sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS) > limite:
+            n_novas = sum(1 for x in novas if x.get("type", "flash") in REEL_ACCENTS)
+            n_antes = sum(1 for x in ed.get("transitions", []) if x.get("type", "flash") in REEL_ACCENTS)
+            if n_novas > limite and n_novas > n_antes:
                 ja = [x for x in existentes if x.get("type", "flash") in REEL_ACCENTS]
                 todos = ", ".join(f"{i}: {c}s" for i, c in enumerate(_cut_times(ed_path)))
                 if ja:
@@ -383,6 +414,11 @@ def apply_reel_file(m: Modelo, target: Path, planos: list[int] | None) -> list[P
         raise SystemExit(f"{m.slug}: não achei state.json em {edit} (passe a pasta edit/ do Reel)")
     old_st = json.loads(sp.read_text(encoding="utf-8"))
     new_st, new_ed = apply_reel(m, edit, planos)
+    ed_path0 = _edit_data_path(edit)
+    old_ed = json.loads(ed_path0.read_text(encoding="utf-8")) if ed_path0 else None
+    if new_st == old_st and new_ed == old_ed:
+        print(f"  {m.slug}: nada mudou (já aplicado); nada foi gravado")
+        return []
     new_st.setdefault("modelos", []).append({"slug": m.slug, "file": str(target), "when": time.strftime("%Y-%m-%d %H:%M")})
     _print_profile_rules(old_st)
     bks: list[Path] = []

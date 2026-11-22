@@ -102,7 +102,7 @@ def test_estilo_unknown_tipo():
 
 
 # ---------------------------------------------------------------- Task 2
-V1_TIPOS = {"speed-ramp", "transicao-velocidade", "bullet-time", "velocity-edit", "whip-pan", "flash", "zoom-through",
+V1_TIPOS = {"l-cut", "freeze-frame", "speed-ramp", "transicao-velocidade", "bullet-time", "velocity-edit", "whip-pan", "flash", "zoom-through",
             "rgb-split", "shake-impacto", "zoom-punch", "zoom-nos-cortes", "push-in", "flash-na-troca", "distorcao-na-troca"}
 V1_ESTILOS = {"montagem-na-batida", "reel-fala-broll"}
 
@@ -398,7 +398,7 @@ def test_demo_plan_velocity_edit_uses_all_shots():
     with tempfile.TemporaryDirectory() as d:
         D = _demo()
         plan = D.demo_plan(D.R.load("velocity-edit"), _fake_material(Path(d)))
-        assert all("pulse" in sh.get("fx", []) for sh in plan["shots"])
+        assert all("pulse" in sh.get("fx", []) for sh in plan["shots"][1:])   # plano 0 has no incoming cut
 
 
 def test_galeria_root_env():
@@ -527,6 +527,123 @@ def test_reel_apply_returns_both_backups():               # I4
         assert st["modelos"][-1]["slug"] == "push-in" and st["awaitingStyle"] is True
 
 
+# ---------------------------------------------------------------- deferred minors
+def _beat_edit_rc(tmp: Path, shot: dict, extra: dict | None = None) -> subprocess.CompletedProcess:
+    plan = {"music": "m.mp3", "beats": "b.json", "shots": [dict({"src": "a.mp4", "beats": 2}, **shot)], **(extra or {})}
+    (tmp / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    return subprocess.run([sys.executable, str(HELPERS / "beat_edit.py"), str(tmp / "plan.json"), "-o", str(tmp / "out")],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+def test_fx_validation_matches_the_renderer():           # M1
+    import beat_edit
+    assert beat_edit.valid_fx("pulse") and beat_edit.valid_fx("push") and beat_edit.valid_fx("shake@2")
+    assert not beat_edit.valid_fx("shake") and not beat_edit.valid_fx("shake@x")
+    with tempfile.TemporaryDirectory() as d:
+        r = _beat_edit_rc(Path(d), {}, {"default_transition": "wipe-velho"})
+        assert "unknown transition" not in (r.stdout + r.stderr)      # ignored key, not validated
+        r = _beat_edit_rc(Path(d), {"fx": ["shake"]})
+        assert r.returncode != 0 and "unknown fx" in (r.stdout + r.stderr)
+
+
+def test_accent_on_plano_0_refused():                     # M2
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 3)
+        msg = _refused(receitas().apply_file, "flash", f, [0], {})
+        assert "plano 0" in msg
+
+
+def test_non_accent_tipo_allowed_over_hand_limit():        # M3
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 6, {1: "flash", 2: "whip-left", 3: "shake", 4: "zoom"})
+        receitas().apply_file("zoom-punch", f, [5], {})
+        assert _read(f)["shots"][5]["fx"] == ["pulse"]
+
+
+def test_unchanged_apply_writes_nothing():                 # M4
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        f = _plan(d, 3)
+        (d / "state.json").write_text("{}", encoding="utf-8")
+        R = receitas()
+        R.apply_file("zoom-punch", f, [1], {})
+        n_bk = len(list(d.glob("plan.antes-*")))
+        assert R.apply_file("zoom-punch", f, [1], {}) == []
+        assert len(list(d.glob("plan.antes-*"))) == n_bk
+        assert len(json.loads((d / "state.json").read_text(encoding="utf-8"))["modelos"]) == 1
+
+
+def test_forced_demo_clears_old_files_first():             # M5
+    with tempfile.TemporaryDirectory() as d:
+        lib, gal = _two_modelos_one_demo(Path(d))
+        with env(PRISMA_MODELOS=lib, PRISMA_MODELOS_GALERIA=gal):
+            D = _demo()
+            D.clear_demo("whip-pan")
+            assert D.demo_status("whip-pan") == "🧪"
+            assert not any((gal / "whip-pan").glob("*"))
+
+
+def test_galeria_groups_estilos_together():
+    with tempfile.TemporaryDirectory() as d:
+        lib, gal = Path(d) / "lib", Path(d) / "gal"
+        for slug, fam in (("e1", "montagem"), ("e2", "reel")):
+            write_modelo(lib, "estilo", slug, {"familia": fam, "host": "montagem", "tipos": [], "regras": {"max_acentos": 3}, "sinais": []})
+        with env(PRISMA_MODELOS=lib, PRISMA_MODELOS_GALERIA=gal):
+            html = _demo().build_galeria().read_text(encoding="utf-8")
+        assert html.count("<h2>Estilos") == 1, html
+
+
+def test_qa_mix_music_verdict():
+    import qa_mix
+    assert qa_mix.music_verdict(-17.0)[0] == "OK"
+    v = qa_mix.music_verdict(-13.1)
+    assert v[0] == "fora do alvo" and "-15 a -20" in v[1]
+    assert qa_mix.music_verdict(-10.0)[0] == "alta"
+    assert qa_mix.music_verdict(-30.0)[0] == "inaudível"
+
+
+# ---------------------------------------------------------------- host "corte" (Phase-1 EDL): L-cut
+def test_l_cut_writes_the_edl():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        edit = Path(d) / "edit"
+        edit.mkdir()
+        (edit / "edl.json").write_text(json.dumps({"ranges": [], "jcut": {"lead_frames": 5}}), encoding="utf-8")
+        (edit / "state.json").write_text(json.dumps({"phase": 1}), encoding="utf-8")
+        bks = receitas().apply_file("l-cut", edit, None, {})
+        edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+        assert edl["jcut"] == {"lead_frames": 5, "mode": "alternate"}       # merged, phase 1 allowed
+        assert len(bks) == 1 and json.loads((edit / "state.json").read_text(encoding="utf-8"))["modelos"][-1]["slug"] == "l-cut"
+
+
+def test_check_rejects_unknown_jcut_mode():
+    with tempfile.TemporaryDirectory() as d, env(PRISMA_MODELOS=d):
+        write_modelo(Path(d), "tipo", "x", {"familia": "corte", "host": "corte", "edl": {"jcut": {"mode": "diagonal"}}})
+        assert any("diagonal" in p for p in receitas().check())
+
+
+# ---------------------------------------------------------------- freeze frame
+def test_freeze_fx_in_beat_edit():
+    import beat_edit
+    assert beat_edit.valid_fx("freeze@1") and not beat_edit.valid_fx("freeze")
+    html = beat_edit.shot_comp("c1", "assets/video/c1.mp4", 0.0, 2.0, [0.0, 0.5, 1.0, 1.5], "cut", "cut",
+                               ["freeze@2"], 1080, 1920, freeze=("assets/video/c1_freeze.jpg", 1.0))
+    assert '<img id="fz-c1" src="assets/video/c1_freeze.jpg"' in html
+    assert 'tl.set("#fz-c1", {opacity:1}, 1.0);' in html
+    assert html.index('<img id="fz-c1"') > html.index('<div id="frame-c1"')      # inside the shaken/pulsed layer
+
+
+def test_freeze_frame_modelo():
+    os.environ.pop("PRISMA_MODELOS", None)
+    with tempfile.TemporaryDirectory() as d:
+        f = _plan(Path(d), 4)
+        receitas().apply_file("freeze-frame", f, [2], {})
+        assert "freeze@1" in _read(f)["shots"][2]["fx"]
+
+
 if __name__ == "__main__":
     fails = 0
     only = sys.argv[1:]
@@ -535,7 +652,7 @@ if __name__ == "__main__":
             try:
                 f()
                 print(f"PASS {name}")
-            except Exception as e:  # noqa: BLE001
+            except (Exception, SystemExit) as e:  # noqa: BLE001
                 fails += 1
                 print(f"FAIL {name}: {e!r}")
     sys.exit(1 if fails else 0)
