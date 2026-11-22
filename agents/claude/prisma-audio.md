@@ -24,7 +24,9 @@ corte aprovado, estilo escolhido, camada visual pronta.
    `helpers/media_ledger.py record`.
 3. SFX: `helpers/sfx_events.py <edit> --apply` (rascunho a partir dos eventos visuais), ajuste pelos
    princípios do `sfx-craft.md` (um protagonista por momento, só sons que tocam no celular, nada
-   repetido em 20 s), `helpers/sfx_index.py show` para escolher.
+   repetido em 20 s), `helpers/sfx_index.py show` para escolher. Foley de carro (porta, partida, passagem,
+   pneu, fechadura, obturador) sem licença: `helpers/earshot_sfx.py kit carro` ou `make "<pedido>"`; um
+   resultado marcado como palpite precisa ser ouvido antes.
 4. Mix: `helpers/deliver_mix.py <edit>` (com a cadeia de voz do perfil, se houver) e depois
    `helpers/qa_mix.py <edit>`. Corrija um FAIL antes de devolver.
 

@@ -108,7 +108,10 @@ apoio escalonadas em 1–2 frames dão profundidade.
   `whoosh_air`, `whip_hit`, `riser_tonal`) tem energia em 150 Hz–8 kHz. Grave
   só como camada **sob** um principal audível.
 
-## 9. Kit sintetizado ou catálogo Epidemic?
+## 9. Kit sintetizado, earshot ou catálogo Epidemic?
+
+**Foley de carro sem licença e sem download → `earshot_sfx.py`** (2026-11-22). O earshot gera, por código, porta batendo, carro dando partida, carro passando, pneu cantando, fechadura e obturador (`earshot_sfx.py kit carro`), todos medidos como "toca bem" no celular pelo `sfx_index`. Ficam em `~/.prisma/sfx/earshot`, entram no índice e no `media_ledger` (MIT, gerado por código). Não tem motor de esportivo acelerando: um pedido que ele só aproxima sai marcado como **palpite** (ouça antes). Para transições (whoosh, impacto, riser, ping) o kit do `sfx_synth.py` já cobre.
+
 
 | Use o kit `sfx_synth.py` quando… | Use o Epidemic quando… |
 |---|---|
