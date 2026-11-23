@@ -191,6 +191,32 @@ def _render_corte(m: R.Modelo, work: Path) -> Path:
     return out
 
 
+def demo_photo() -> Path:
+    """The still used by host "cena" demos: a Pexels studio photo pinned in demo.json (pexels_photo)."""
+    import requests
+    import pexels_search
+    cfg = json.loads(_demo_json().read_text(encoding="utf-8"))
+    pid = cfg["pexels_photo"]
+    dest = galeria_root() / "_material" / f"pexels-foto-{pid}.jpg"
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        key = pexels_search.load_api_key()
+        r = requests.get(f"https://api.pexels.com/v1/photos/{pid}", headers={"Authorization": key}, timeout=60)
+        r.raise_for_status()
+        p = r.json()
+        pexels_search.download(p["src"]["large2x"], dest)
+        _ledger(dest, "pexels", "car studio photo", "Pexels License", p.get("photographer", "?"), p.get("url", ""))
+    return dest
+
+
+def _render_cena(m: R.Modelo, work: Path) -> Path:
+    """Host "cena": the recipe's demo data on the pinned studio photo, built and rendered by cenas.py."""
+    import cenas
+    dados = R.cena_dados(m, {**m.dados.get("demo", {}), "foto": str(demo_photo())}, {})
+    proj = cenas.build(m.dados["cena"], dados, work / "cena")
+    return cenas.render(proj, log=work / "render.log")
+
+
 def render_demo(slug: str, force: bool = False) -> Path:
     import motion_gates
     m = R.load(slug)
@@ -204,7 +230,8 @@ def render_demo(slug: str, force: bool = False) -> Path:
     work = galeria_root() / "_work" / slug
     work.mkdir(parents=True, exist_ok=True)
     video = (_render_montagem(m, work) if m.host == "montagem" else
-             _render_corte(m, work) if m.host == "corte" else _render_reel(m, work))
+             _render_corte(m, work) if m.host == "corte" else
+             _render_cena(m, work) if m.host == "cena" else _render_reel(m, work))
     res = motion_gates.run_render(video, work / "look", "reels", None)
     gates = {g["id"]: g for g in res["gates"]}
     dest.mkdir(parents=True, exist_ok=True)

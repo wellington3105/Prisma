@@ -6,6 +6,7 @@ as `modelo.json` (the recipe) + `MODELO.md` (the sheet). The recipe only writes 
 current tools already read:
   host "montagem"  -> a beat_edit plan.json
   host "reel-fala" -> state.json `style` + the Phase-2 edit-data.json
+  host "cena"      -> a self-contained HyperFrames scene (cenas.py) in <edit>/cenas/<slug>/
 Spec: docs/superpowers/specs/2026-11-22-biblioteca-modelos-design.md
 """
 from __future__ import annotations
@@ -112,8 +113,8 @@ def check() -> list[str]:
             probs.append(f"{pasta}: slug '{m.slug}' difere do nome da pasta")
         if m.nivel not in NIVEIS:
             probs.append(f"{pasta}: nivel '{m.nivel}' (use tipo ou estilo)")
-        if m.host not in ("montagem", "reel-fala", "corte"):
-            probs.append(f"{pasta}: host '{m.host}' (use montagem, reel-fala ou corte)")
+        if m.host not in ("montagem", "reel-fala", "corte", "cena"):
+            probs.append(f"{pasta}: host '{m.host}' (use montagem, reel-fala, corte ou cena)")
         sheet = m.pasta / "MODELO.md"
         txt = sheet.read_text(encoding="utf-8") if sheet.exists() else ""
         for sec in SHEET_SECTIONS:
@@ -127,6 +128,10 @@ def check() -> list[str]:
             probs += _check_montagem(m)
         elif m.host == "reel-fala":
             probs += _check_reel(m)
+        elif m.host == "cena":
+            import cenas
+            if m.dados.get("cena") not in cenas.CENAS:
+                probs.append(f"{m.slug}: cena '{m.dados.get('cena')}' não existe (use {', '.join(cenas.CENAS)})")
         elif m.host == "corte":
             import render
             mode = (m.dados.get("edl", {}).get("jcut") or {}).get("mode")
@@ -287,7 +292,41 @@ def apply_file(slug: str, target: Path, planos: list[int] | None, params: dict[s
         return [bk]
     if m.host == "corte":
         return apply_corte_file(m, target)
+    if m.host == "cena":
+        return apply_cena_file(m, target, params)
     return apply_reel_file(m, target, planos)
+
+
+def cena_dados(m: Modelo, base: dict, params: dict[str, str]) -> dict:
+    """The recipe's default data, then a dados.json (base), then --param k=v on top.
+    pilulas=icone:texto[:cor]|icone:texto…  (ex.: cor:Branco Polar:#f2f2f2|potencia:185 cv)"""
+    dados = {**m.dados.get("dados", {}), **base}
+    for k, v in params.items():
+        if k == "pilulas":
+            pills = []
+            for item in filter(None, v.split("|")):
+                parts = item.split(":")
+                p = {"icone": parts[0], "texto": parts[1] if len(parts) > 1 else ""}
+                if len(parts) > 2:
+                    p["cor"] = ":".join(parts[2:])
+                pills.append(p)
+            dados["pilulas"] = pills
+        else:
+            dados[k] = v
+    return dados
+
+
+def apply_cena_file(m: Modelo, target: Path, params: dict[str, str]) -> list[Path]:
+    """Host "cena": build the scene project in <edit>/cenas/<slug>/ (target = the edit folder, or a
+    dados.json beside it). Rendering is a separate step: cenas.py render <pasta>."""
+    import cenas
+    target = Path(target)
+    base = json.loads(target.read_text(encoding="utf-8")) if target.is_file() else {}
+    edit = target.parent if target.is_file() else target
+    out = cenas.build(m.dados["cena"], cena_dados(m, base, params), edit / "cenas" / m.slug)
+    print(f"  cena {m.slug} → {out}")
+    print(f'  render: python helpers/cenas.py render "{out}"')
+    return []
 
 
 def apply_corte_file(m: Modelo, target: Path) -> list[Path]:
