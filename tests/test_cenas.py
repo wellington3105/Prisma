@@ -345,6 +345,121 @@ def test_lyric_validates():
         assert any("letra" in p for p in cenas.validate("lyric-carro", dict(ok, palavras=None, letra=str(d / "n.json"))))
 
 
+# ---------------------------------------------------------------- legenda (mista / palavra-chave)
+def _caps(d: Path) -> Path:
+    f = d / "captions.json"
+    ws = [("Esse", 250, 550), ("carro", 620, 950), ("não", 1020, 1290), ("é", 1300, 1400), ("caro", 1420, 1800),
+          ("custa", 2400, 2700), ("só", 2750, 2900), ("200", 2950, 3300), ("mil", 3320, 3600)]
+    f.write_text(json.dumps([{"text": t, "startMs": a, "endMs": b} for t, a, b in ws]), encoding="utf-8")
+    return f
+
+
+def _leg(d: Path, **kw) -> dict:
+    base = {"video": str(_clip(d, 5.0)), "de": 0.0, "ate": 4.5, "legendas": str(_caps(d)), "estilo": "mista"}
+    base.update(kw)
+    return base
+
+
+def test_legenda_mista_groups_sizes_and_strikes():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("legenda", _leg(d), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert html.count('class="bloco"') == 2, "pausa de 0,6 s abre um bloco novo"
+        assert len(re.findall(r'class="pw (?:forte|liga|meio)', html)) == 9
+        assert len(re.findall(r'class="pw forte', html)) == 2, "uma palavra forte por bloco"
+        assert re.search(r'class="pw forte[^"]*"[^>]*>200<', html), "número é sempre a forte"
+        assert html.count('class="risco"') == 1, "risco na negação"
+        assert re.search(r'class="pw liga[^"]*"[^>]*>é<', html)
+
+
+def test_legenda_palavra_chave_one_small_line_and_keyword():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("legenda", _leg(d, estilo="palavra-chave", destaques="carro"), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        chaves = re.findall(r'class="pw chave[^"]*"[^>]*>([^<]+)<', html)
+        assert chaves == ["carro", "200"], chaves
+        assert 'class="risco"' not in html
+
+
+def test_legenda_reads_a_transcribe_transcript_and_shifts_by_de():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tr = d / "t.json"
+        tr.write_text(json.dumps({"words": [{"text": "antes", "start": 0.1, "end": 0.4, "type": "word"},
+                                            {"text": "Olha", "start": 1.2, "end": 1.5, "type": "word"},
+                                            {"text": "isso", "start": 1.6, "end": 1.9, "type": "word"}]}), encoding="utf-8")
+        out = cenas.build("legenda", _leg(d, legendas=str(tr), de=1.0, ate=3.0), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert re.findall(r'class="pw [^"]*"[^>]*>([^<]+)<', html) == ["Olha", "isso"]
+        assert "/* w0 @0.2 */" in html
+
+
+def test_legenda_validates():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        ok = _leg(d)
+        assert cenas.validate("legenda", ok) == []
+        assert any("estilo" in p for p in cenas.validate("legenda", dict(ok, estilo="neon")))
+        assert any("legendas" in p for p in cenas.validate("legenda", dict(ok, legendas=str(d / "x.json"))))
+
+
+def test_legenda_rejects_bad_caption_data_before_writing_project():
+    import cenas
+
+    invalid = [
+        ("{", "JSON inválido"),
+        ("42", "lista"),
+        ('{"words":{}}', "lista"),
+        ('[17]', "entrada 1"),
+        ('[{"text":"carro","startMs":300,"endMs":200}]', "entrada 1"),
+        ('[{"text":"carro","startMs":NaN,"endMs":200}]', "entrada 1"),
+        ('[{"text":42,"startMs":300,"endMs":400}]', "entrada 1"),
+        ('[{"text":"carro","endMs":400}]', "entrada 1"),
+        ('{"words":[{"type":"word","text":"carro","start":0.3,"end":"fim"}]}', "entrada 1"),
+        ('[{"text":"carro","startMs":900,"endMs":1000},{"text":"foi","startMs":600,"endMs":800}]', "entrada 2"),
+        ('[{"text":"carro","startMs":4500,"endMs":4800}]', "sem palavras"),
+        ("[]", "sem palavras"),
+    ]
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        dados = _leg(d)
+        captions = Path(dados["legendas"])
+        output = d / "proj"
+        for payload, expected in invalid:
+            captions.write_text(payload, encoding="utf-8")
+            problems = cenas.validate("legenda", dados)
+            assert any("legendas" in problem and expected in problem for problem in problems), (payload, problems)
+            try:
+                cenas.build("legenda", dados, output)
+            except SystemExit as exc:
+                assert expected in str(exc)
+            else:
+                raise AssertionError(f"o projeto aceitou {payload}")
+            assert not output.exists(), payload
+
+
+def test_legenda_mista_keeps_negation_pair_in_one_block_at_the_word_limit():
+    import cenas
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        dados = _leg(d)
+        words = "Esse carro parece bom não é seguro".split()
+        Path(dados["legendas"]).write_text(json.dumps([
+            {"text": word, "startMs": i * 300, "endMs": (i + 1) * 300}
+            for i, word in enumerate(words)
+        ]), encoding="utf-8")
+        html = (cenas.build("legenda", dados, d / "proj") / "index.html").read_text(encoding="utf-8")
+        assert 'id="b1"><div class="linha"><span class="pw liga" id="p4">não</span>' in html
+        assert 'drawStrike("r1-0", "p4", "p5",' in html
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

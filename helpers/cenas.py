@@ -59,6 +59,8 @@ CENAS = {
                                 "cards", "altura", "entra", "transcricao", "frase_entrada", "ocorrencia"]},
     # Song words as 3D neon titles on a beat-cut montage, with speed-line / halftone-ray bursts and flashes.
     "lyric-carro": {"campos": ["video", "de", "ate", "palavras", "letra", "beats", "rajadas", "flashes", "paleta"]},
+    # Captions over a stretch of the clip: "mista" (sizes and colours per word, strike) or "palavra-chave".
+    "legenda": {"campos": ["video", "de", "ate", "legendas", "estilo", "destaques", "altura"]},
 }
 
 
@@ -73,6 +75,9 @@ def validate(cena: str, dados: dict) -> list[str]:
     if cena == "lyric-carro":
         import cenas_lyric
         return probs + cenas_lyric.validate(dados)
+    if cena == "legenda":
+        import cenas_legenda
+        return probs + cenas_legenda.validate(dados)
     foto = dados.get("foto")
     if not foto or not Path(foto).exists():
         probs.append(f"foto não encontrada: {foto!r}")
@@ -161,6 +166,9 @@ def build(cena: str, dados: dict, out: Path) -> Path:
     if cena == "lyric-carro":
         import cenas_lyric
         return cenas_lyric.build(proj, dados)
+    if cena == "legenda":
+        import cenas_legenda
+        return cenas_legenda.build(proj, dados)
     return _build_card(proj, cena, dados)
 
 
