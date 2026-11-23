@@ -15,15 +15,84 @@ Fonts are ours (Poppins 900 / 600, Lora 700 italic); curves are prisma-eases.js.
 from __future__ import annotations
 
 import json
+import math
 import random
 import subprocess
 import tempfile
 from pathlib import Path
 
 from hfkit.project import FONT_STACK, Project, esc, font_faces
+from spoken_notes import norm
 
 W, H = 1080, 1920
 MAX_CARDS = 2
+TITLE_DELAY = 0.45
+
+
+def _entry_time(dados: dict) -> float:
+    """Resolve the opening animation to seconds from the start of the scene."""
+    if not {"frase_entrada", "transcricao", "ocorrencia"}.intersection(dados):
+        return float(dados.get("entra", 0.25))
+
+    phrase = dados.get("frase_entrada")
+    target = [word for token in phrase.split() if (word := norm(token))] if isinstance(phrase, str) else []
+    if not target:
+        raise ValueError("frase_entrada precisa conter a frase falada")
+    transcript = dados.get("transcricao")
+    if not isinstance(transcript, str) or not transcript.strip():
+        raise ValueError("transcricao precisa indicar o JSON temporizado do mesmo vídeo")
+
+    data = json.loads(Path(transcript).read_text(encoding="utf-8-sig"))
+    entries = data.get("words") if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        raise ValueError("transcricao precisa conter uma lista de palavras")
+    words, timings = [], []
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ValueError("palavra inválida na transcricao")
+        if item.get("type", "word") != "word":
+            continue
+        raw = item.get("text") or item.get("word")
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("palavra inválida na transcricao")
+        word = norm(raw)
+        if not word:
+            continue
+        if "startMs" in item or "endMs" in item:
+            start, end = float(item["startMs"]) / 1000, float(item["endMs"]) / 1000
+        else:
+            start, end = float(item["start"]), float(item["end"])
+        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start <= end):
+            raise ValueError("tempos de palavra inválidos na transcricao")
+        if timings and start < timings[-1][0]:
+            raise ValueError("palavras da transcricao fora de ordem cronológica")
+        words.append(word)
+        timings.append((start, end))
+
+    de, ate = float(dados.get("de", 0)), float(dados["ate"])
+    size = len(target)
+    matches = [
+        timings[i][0]
+        for i in range(len(words) - size + 1)
+        if words[i:i + size] == target
+        and all(de <= start < ate and end <= ate for start, end in timings[i:i + size])
+    ]
+    if not matches:
+        raise ValueError(f"frase {phrase!r} não aparece por inteiro no trecho de {de:g} a {ate:g} s")
+    occurrence = dados.get("ocorrencia")
+    if occurrence is None:
+        if len(matches) > 1:
+            raise ValueError(f"frase {phrase!r} tem {len(matches)} ocorrências no trecho; informe ocorrencia")
+        index = 0
+    else:
+        number = str(occurrence)
+        if not (number.isascii() and number.isdecimal() and 1 <= int(number) <= len(matches)):
+            raise ValueError(f"ocorrencia precisa ser um inteiro de 1 a {len(matches)} no trecho")
+        index = int(number) - 1
+    entry = matches[index] - de
+    if round(entry + TITLE_DELAY, 3) >= round(ate - de, 6):
+        raise ValueError("o trecho termina antes da entrada da palavra principal; ajuste ate")
+    return entry
 
 
 def validate(dados: dict) -> list[str]:
@@ -49,6 +118,11 @@ def validate(dados: dict) -> list[str]:
     ac = str(dados.get("acento", "") or "")
     if ac and ac not in str(dados.get("sub", "")).split():
         probs.append(f"acento '{ac}' precisa ser uma palavra da sub")
+    if ate > de and {"frase_entrada", "transcricao", "ocorrencia"}.intersection(dados):
+        try:
+            _entry_time(dados)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            probs.append(f"entrada por frase: {exc}")
     return probs
 
 
@@ -88,7 +162,7 @@ def build(proj: Project, dados: dict) -> Path:
     de, ate = float(dados.get("de", 0)), float(dados["ate"])
     dur = round(ate - de, 6)
     altura = float(dados.get("altura", 0.17))
-    t0 = float(dados.get("entra", 0.25))
+    t0 = _entry_time(dados)
     cor = dados.get("cor", "#c8102e")
     ink = _ink(video, de + min(dur, t0 + 1.2), altura)
     shade = "rgba(255,255,255,.55)" if ink != "#ffffff" else "rgba(0,0,0,.45)"
@@ -134,8 +208,8 @@ def build(proj: Project, dados: dict) -> Path:
     a("#risco", {"scaleY": 0, "opacity": 1}, {"scaleY": 1, "duration": 0.15, "ease": "cruise"}, t0 + 0.3)
     tl.append(f'tl.to("#risco", {{"opacity":0,"duration":0.1}}, {round(t0 + 0.45, 3)});')
     a("#palavra", {"opacity": 0, "scale": 1.15, "filter": "blur(26px)"},
-      {"opacity": 1, "scale": 1, "filter": "blur(0px)", "duration": 0.42, "ease": "softLand"}, t0 + 0.45)
-    a("#brilho", {"opacity": 0}, {"opacity": 0.95, "duration": 0.08, "ease": "cruise"}, t0 + 0.45)
+      {"opacity": 1, "scale": 1, "filter": "blur(0px)", "duration": 0.42, "ease": "softLand"}, t0 + TITLE_DELAY)
+    a("#brilho", {"opacity": 0}, {"opacity": 0.95, "duration": 0.08, "ease": "cruise"}, t0 + TITLE_DELAY)
     tl.append(f'tl.to("#brilho", {{"opacity":0,"duration":0.6,"ease":"glide"}}, {round(t0 + 0.55, 3)});')
     for i in range(9):
         on = t0 + 0.45 + i * 0.02

@@ -209,6 +209,65 @@ def test_titulo_misto_accent_word_is_the_serif_italic():
         assert "PrismaLora" in html
 
 
+def test_modelos_apply_titulo_misto_aligns_title_to_a_repeated_phrase():
+    import modelos_receitas as R
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        clip = _clip(d)
+        words = d / "captions.json"
+        words.write_text(json.dumps([
+            {"text": "É", "startMs": 800, "endMs": 900},
+            {"text": "turbo!", "startMs": 910, "endMs": 1100},
+            {"text": "é", "startMs": 1900, "endMs": 2000},
+            {"text": "TURBO.", "startMs": 2010, "endMs": 2250},
+        ]), encoding="utf-8")
+        R.apply_file("titulo-misto", d / "edit", None, {
+            "video": str(clip), "de": "0.5", "ate": "4.5", "palavra": "Turbo",
+            "esquerda": "É", "transcricao": str(words), "frase_entrada": "e turbo", "ocorrencia": "2",
+        })
+        html = (d / "edit/cenas/titulo-misto/index.html").read_text(encoding="utf-8")
+        first_tween = next(line for line in html.splitlines() if "tl.fromTo" in line)
+        assert first_tween.endswith(", 1.4);"), first_tween
+
+
+def test_titulo_misto_anchor_rejects_ambiguity_and_out_of_excerpt():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        words = d / "transcricao.json"
+        words.write_text(json.dumps({"words": [
+            {"text": "Aqui", "start": 0.1, "end": 0.3},
+            {"text": "é", "start": 0.9, "end": 1.1},
+            {"text": "turbo", "start": 1.1, "end": 1.4},
+            {"text": "é", "start": 2.1, "end": 2.2},
+            {"text": "turbo", "start": 2.2, "end": 2.5},
+        ]}), encoding="utf-8")
+        dados = _titulo(d, transcricao=str(words), frase_entrada="é turbo")
+        assert any("2 ocorrências" in p for p in cenas.validate("titulo-misto", dados))
+        assert any("não aparece" in p for p in cenas.validate("titulo-misto", dict(dados, frase_entrada="aqui")))
+        assert any("não aparece" in p for p in cenas.validate("titulo-misto", dict(dados, ate=1.3)))
+        assert cenas.validate("titulo-misto", dict(dados, ocorrencia=1)) == []
+
+
+def test_titulo_misto_anchor_rejects_invalid_word_order_and_late_entry():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        transcript = d / "captions.json"
+        dados = _titulo(d, transcricao=str(transcript), frase_entrada="é turbo")
+        first = {"text": "é", "startMs": 1000, "endMs": 1100}
+        second = {"text": "turbo", "startMs": 1200, "endMs": 1400}
+        for words, error in [
+            ([first, {"startMs": 1100, "endMs": 1200}, second], "palavra inválida"),
+            ([second, first], "ordem cronológica"),
+            ([{"text": "é", "startMs": 4200, "endMs": 4250},
+              {"text": "turbo", "startMs": 4260, "endMs": 4400}], "palavra principal"),
+        ]:
+            transcript.write_text(json.dumps(words), encoding="utf-8")
+            problems = cenas.validate("titulo-misto", dados)
+            assert any(error in problem for problem in problems), (error, problems)
+
+
 def test_modelos_apply_titulo_misto_splits_cards():
     import modelos_receitas as R
     with tempfile.TemporaryDirectory() as d:

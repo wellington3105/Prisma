@@ -56,7 +56,7 @@ CENAS = {
                    "campos": ["foto", "titulo", "versao", "pilulas", "frase", "assinatura", "fundo", "foco", "zoom"]},
     # The hook of a talking-head Reel: a stretch of the clip (de..ate) with the three-voice title over it.
     "titulo-misto": {"campos": ["video", "de", "ate", "esquerda", "direita", "palavra", "sub", "acento", "cor",
-                                "cards", "altura", "entra"]},
+                                "cards", "altura", "entra", "transcricao", "frase_entrada", "ocorrencia"]},
     # Song words as 3D neon titles on a beat-cut montage, with speed-line / halftone-ray bursts and flashes.
     "lyric-carro": {"campos": ["video", "de", "ate", "palavras", "letra", "beats", "rajadas", "flashes", "paleta"]},
     # Captions over a stretch of the clip: "mista" (sizes and colours per word, strike) or "palavra-chave".

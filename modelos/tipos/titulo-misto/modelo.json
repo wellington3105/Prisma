@@ -50,7 +50,16 @@
       "o_que": "altura do título no quadro (fração; padrão 0.17, acima da cabeça)"
     },
     "entra": {
-      "o_que": "quando o título começa, a partir do início do trecho (s)"
+      "o_que": "quando a animação começa a partir do início do trecho (s), sem frase_entrada"
+    },
+    "transcricao": {
+      "o_que": "JSON temporizado do mesmo vídeo, transcribe.py ou captions.json"
+    },
+    "frase_entrada": {
+      "o_que": "frase falada que dispara a entrada. Usa o começo da primeira palavra e tem prioridade sobre entra"
+    },
+    "ocorrencia": {
+      "o_que": "qual ocorrência da frase usar dentro de de..ate, contando a partir de 1"
     }
   },
   "demo": {
