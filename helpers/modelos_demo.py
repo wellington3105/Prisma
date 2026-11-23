@@ -211,9 +211,11 @@ def demo_photo() -> Path:
 
 def _render_cena(m: R.Modelo, work: Path) -> Path:
     """Host "cena": the recipe's demo data, built and rendered by cenas.py. In the demo data "{foto}" is the
-    pinned studio photo and "{fala}" the regression talking-head clip (local only, git-ignored)."""
+    pinned studio photo, "{fala}" the regression talking-head clip (local only, git-ignored) and
+    "{montagem}" the montagem-na-batida demo (rendered first if missing)."""
     import cenas
-    subs = {"{foto}": lambda: str(demo_photo()), "{fala}": lambda: str(SKILL / "tests" / "fixture" / "cayenne_clip.mp4")}
+    subs = {"{foto}": lambda: str(demo_photo()), "{fala}": lambda: str(SKILL / "tests" / "fixture" / "cayenne_clip.mp4"),
+            "{montagem}": lambda: str(render_demo("montagem-na-batida"))}
 
     def fill(v):
         if isinstance(v, str) and v in subs:

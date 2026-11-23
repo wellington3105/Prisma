@@ -220,6 +220,72 @@ def test_modelos_apply_titulo_misto_splits_cards():
         assert dados["cards"] == [str(foto), str(foto)], dados
 
 
+# ---------------------------------------------------------------- lyric-carro
+def _lyric(d: Path, **kw) -> dict:
+    base = {"video": str(_clip(d, 6.0)), "de": 1.0, "ate": 5.0, "palavras": "ACELERA@0.4|SEM@0.9|MEDO@1.3"}
+    base.update(kw)
+    return base
+
+
+def test_lyric_words_from_the_param_string():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("lyric-carro", _lyric(d), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert abs(float(re.search(r'data-duration="([\d.]+)"', html).group(1)) - 4.0) < 1e-6
+        assert html.count('class="lw ') == 3
+        for w in ("ACELERA", "SEM", "MEDO"):
+            assert f">{w}<" in html
+        styles = re.findall(r'class="lw (\w+)"', html)
+        assert len(set(styles)) == 3, styles     # the palette cycles
+        assert re.search(r'<audio[^>]+data-media-start="1.0"', html)
+
+
+def test_lyric_words_from_a_transcript_inside_the_stretch():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tr = d / "musica.json"
+        tr.write_text(json.dumps({"words": [
+            {"text": "fora", "start": 0.2, "end": 0.5, "type": "word"},
+            {"text": " ", "start": 0.5, "end": 0.6, "type": "spacing"},
+            {"text": "Cala", "start": 1.5, "end": 1.8, "type": "word"},
+            {"text": "a", "start": 1.9, "end": 2.0, "type": "word"},
+            {"text": "boca!", "start": 2.2, "end": 2.6, "type": "word"},
+            {"text": "depois", "start": 5.5, "end": 5.8, "type": "word"}]}), encoding="utf-8")
+        out = cenas.build("lyric-carro", _lyric(d, palavras=None, letra=str(tr)), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert re.findall(r'class="lw \w+"[^>]*>([^<]+)<', html) == ["CALA", "A", "BOCA!"]
+        dados = json.loads((out / "dados.json").read_text(encoding="utf-8"))
+        assert dados["letra"] == str(tr)
+
+
+def test_lyric_bursts_from_the_beat_map():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        bm = d / "beats.json"
+        bm.write_text(json.dumps({"downbeats": [0.5, 1.5, 2.5, 3.5, 4.5, 5.5], "drops": [3.5]}), encoding="utf-8")
+        out = cenas.build("lyric-carro", _lyric(d, beats=str(bm)), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        # downbeats 1.5, 2.5, 3.5, 4.5 fall inside 1.0..5.0 -> relative 0.5, 1.5, 2.5, 3.5, alternating
+        assert html.count('class="rajada"') >= 1 and html.count('class="raios"') >= 1
+        assert len(re.findall(r'/\* burst (\w+) @([\d.]+) \*/', html)) == 4
+        assert re.findall(r'/\* flash @([\d.]+) \*/', html) == ["2.5"]
+
+
+def test_lyric_validates():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        ok = _lyric(d)
+        assert cenas.validate("lyric-carro", ok) == []
+        assert any("palavras" in p for p in cenas.validate("lyric-carro", dict(ok, palavras="")))
+        assert any("@" in p for p in cenas.validate("lyric-carro", dict(ok, palavras="ACELERA|SEM@x")))
+        assert any("letra" in p for p in cenas.validate("lyric-carro", dict(ok, palavras=None, letra=str(d / "n.json"))))
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):
