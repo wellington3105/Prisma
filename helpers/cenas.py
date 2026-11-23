@@ -54,13 +54,20 @@ PAD = 40
 CENAS = {
     "card-ficha": {"duracao": 10.5, "duracao_sem_frase": 6.5,
                    "campos": ["foto", "titulo", "versao", "pilulas", "frase", "assinatura", "fundo", "foco", "zoom"]},
+    # The hook of a talking-head Reel: a stretch of the clip (de..ate) with the three-voice title over it.
+    "titulo-misto": {"campos": ["video", "de", "ate", "esquerda", "direita", "palavra", "sub", "acento", "cor",
+                                "cards", "altura", "entra"]},
 }
 
 
 def validate(cena: str, dados: dict) -> list[str]:
     if cena not in CENAS:
         return [f"cena '{cena}' não existe (use {', '.join(CENAS)})"]
-    probs = []
+    probs = [f"campo '{k}' não é da cena {cena} (campos: {', '.join(CENAS[cena]['campos'])})"
+             for k in dados if k not in CENAS[cena]["campos"]]
+    if cena == "titulo-misto":
+        import cenas_titulo
+        return probs + cenas_titulo.validate(dados)
     foto = dados.get("foto")
     if not foto or not Path(foto).exists():
         probs.append(f"foto não encontrada: {foto!r}")
@@ -72,9 +79,6 @@ def validate(cena: str, dados: dict) -> list[str]:
     for p in pills:
         if p.get("icone") and p["icone"] not in ICONES:
             probs.append(f"ícone '{p['icone']}' não existe (use {', '.join(ICONES)})")
-    for k in dados:
-        if k not in CENAS[cena]["campos"]:
-            probs.append(f"campo '{k}' não é da cena {cena} (campos: {', '.join(CENAS[cena]['campos'])})")
     return probs
 
 
@@ -126,20 +130,36 @@ def _js(o) -> str:
     return json.dumps(o, ensure_ascii=False, separators=(",", ":"))
 
 
-def build(cena: str, dados: dict, out: Path) -> Path:
-    probs = validate(cena, dados)
-    if probs:
-        raise SystemExit("dados da cena com problemas:\n  " + "\n  ".join(probs))
-    out = Path(out)
+def _project(out: Path, dados: dict) -> Project:
     proj = Project(out, W, H, FPS)
     proj.init(None)
     pkg_f = out / "package.json"
     pkg = json.loads(pkg_f.read_text(encoding="utf-8"))
     pkg.setdefault("prisma", {})["hyperframes"] = CENA_HF_PIN
     pkg_f.write_text(json.dumps(pkg, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out / "dados.json").write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+    return proj
+
+
+def _eases() -> str:
+    return (HERE.parent / "assets" / "hyperframes" / "vendor" / "prisma-eases.js").read_text(encoding="utf-8")
+
+
+def build(cena: str, dados: dict, out: Path) -> Path:
+    probs = validate(cena, dados)
+    if probs:
+        raise SystemExit("dados da cena com problemas:\n  " + "\n  ".join(probs))
+    proj = _project(Path(out), dados)
+    if cena == "titulo-misto":
+        import cenas_titulo
+        return cenas_titulo.build(proj, dados)
+    return _build_card(proj, cena, dados)
+
+
+def _build_card(proj: Project, cena: str, dados: dict) -> Path:
+    out = proj.root
     tone = _photo_tone(Path(dados["foto"]))
     foto = proj.asset(Path(dados["foto"]))
-    (out / "dados.json").write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
 
     titulo, versao = str(dados["titulo"]), str(dados.get("versao", ""))
     frase = str(dados.get("frase", "") or "").strip()
