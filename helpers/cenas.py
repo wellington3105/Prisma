@@ -57,6 +57,8 @@ CENAS = {
     # The hook of a talking-head Reel: a stretch of the clip (de..ate) with the three-voice title over it.
     "titulo-misto": {"campos": ["video", "de", "ate", "esquerda", "direita", "palavra", "sub", "acento", "cor",
                                 "cards", "altura", "entra"]},
+    # Song words as 3D neon titles on a beat-cut montage, with speed-line / halftone-ray bursts and flashes.
+    "lyric-carro": {"campos": ["video", "de", "ate", "palavras", "letra", "beats", "rajadas", "flashes", "paleta"]},
 }
 
 
@@ -68,6 +70,9 @@ def validate(cena: str, dados: dict) -> list[str]:
     if cena == "titulo-misto":
         import cenas_titulo
         return probs + cenas_titulo.validate(dados)
+    if cena == "lyric-carro":
+        import cenas_lyric
+        return probs + cenas_lyric.validate(dados)
     foto = dados.get("foto")
     if not foto or not Path(foto).exists():
         probs.append(f"foto não encontrada: {foto!r}")
@@ -153,6 +158,9 @@ def build(cena: str, dados: dict, out: Path) -> Path:
     if cena == "titulo-misto":
         import cenas_titulo
         return cenas_titulo.build(proj, dados)
+    if cena == "lyric-carro":
+        import cenas_lyric
+        return cenas_lyric.build(proj, dados)
     return _build_card(proj, cena, dados)
 
 

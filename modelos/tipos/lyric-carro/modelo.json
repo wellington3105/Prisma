@@ -1,0 +1,51 @@
+{
+  "slug": "lyric-carro",
+  "nivel": "tipo",
+  "nome": "Lyric edit de carro (letra 3D néon na batida)",
+  "familia": "grafismo",
+  "host": "cena",
+  "acento": true,
+  "cena": "lyric-carro",
+  "dados": {
+    "de": 0.0
+  },
+  "parametros": {
+    "video": {
+      "obrigatorio": true,
+      "o_que": "a montagem já cortada na batida (render do beat_edit), com a música"
+    },
+    "de": {
+      "o_que": "início do trecho (s)"
+    },
+    "ate": {
+      "obrigatorio": true,
+      "o_que": "fim do trecho (s)"
+    },
+    "palavras": {
+      "o_que": "TEXTO@t|… (t a partir do início do trecho), uma palavra por sílaba forte"
+    },
+    "letra": {
+      "o_que": "transcript da música (transcribe.py): usa as palavras dentro do trecho no lugar de palavras"
+    },
+    "beats": {
+      "o_que": "mapa do beat_map.py: downbeats alternam rajada de velocidade e raios; drops dão flash"
+    },
+    "rajadas": {
+      "o_que": "t|t… das rajadas (alternam linhas de velocidade e raios de meio-tom)"
+    },
+    "flashes": {
+      "o_que": "t|t… dos flashes brancos de 1 quadro"
+    },
+    "paleta": {
+      "o_que": "estilos das palavras em ciclo: ouro, ciano, branco (padrão: os três)"
+    }
+  },
+  "demo": {
+    "video": "{montagem}",
+    "de": 0.0,
+    "ate": 4.1,
+    "palavras": "SEM@0.07|FREIO@0.57|SÓ@1.1|ACELERA@1.57|NA@2.07|PISTA@2.57|AGORA@3.1",
+    "rajadas": "0.57|2.57",
+    "flashes": "2.07"
+  }
+}
