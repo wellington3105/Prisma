@@ -409,6 +409,57 @@ def test_legenda_validates():
         assert any("legendas" in p for p in cenas.validate("legenda", dict(ok, legendas=str(d / "x.json"))))
 
 
+def test_legenda_rejects_bad_caption_data_before_writing_project():
+    import cenas
+
+    invalid = [
+        ("{", "JSON inválido"),
+        ("42", "lista"),
+        ('{"words":{}}', "lista"),
+        ('[17]', "entrada 1"),
+        ('[{"text":"carro","startMs":300,"endMs":200}]', "entrada 1"),
+        ('[{"text":"carro","startMs":NaN,"endMs":200}]', "entrada 1"),
+        ('[{"text":42,"startMs":300,"endMs":400}]', "entrada 1"),
+        ('[{"text":"carro","endMs":400}]', "entrada 1"),
+        ('{"words":[{"type":"word","text":"carro","start":0.3,"end":"fim"}]}', "entrada 1"),
+        ('[{"text":"carro","startMs":900,"endMs":1000},{"text":"foi","startMs":600,"endMs":800}]', "entrada 2"),
+        ('[{"text":"carro","startMs":4500,"endMs":4800}]', "sem palavras"),
+        ("[]", "sem palavras"),
+    ]
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        dados = _leg(d)
+        captions = Path(dados["legendas"])
+        output = d / "proj"
+        for payload, expected in invalid:
+            captions.write_text(payload, encoding="utf-8")
+            problems = cenas.validate("legenda", dados)
+            assert any("legendas" in problem and expected in problem for problem in problems), (payload, problems)
+            try:
+                cenas.build("legenda", dados, output)
+            except SystemExit as exc:
+                assert expected in str(exc)
+            else:
+                raise AssertionError(f"o projeto aceitou {payload}")
+            assert not output.exists(), payload
+
+
+def test_legenda_mista_keeps_negation_pair_in_one_block_at_the_word_limit():
+    import cenas
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        dados = _leg(d)
+        words = "Esse carro parece bom não é seguro".split()
+        Path(dados["legendas"]).write_text(json.dumps([
+            {"text": word, "startMs": i * 300, "endMs": (i + 1) * 300}
+            for i, word in enumerate(words)
+        ]), encoding="utf-8")
+        html = (cenas.build("legenda", dados, d / "proj") / "index.html").read_text(encoding="utf-8")
+        assert 'id="b1"><div class="linha"><span class="pw liga" id="p4">não</span>' in html
+        assert 'drawStrike("r1-0", "p4", "p5",' in html
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

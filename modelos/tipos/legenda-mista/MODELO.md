@@ -19,9 +19,10 @@ de um Reel de referência (estudo; F7 em `Prisma-Suite/docs/analises/2026-11-22-
 ## Contenção
 - Uma palavra forte por bloco; números e `destaques` passam na frente.
 - Blocos de até 5 palavras; pausa de 0,35 s abre bloco novo.
+- O par da negação permanece no mesmo bloco quando a fala é contínua. Se a troca de bloco encurtar o tempo do risco, ele começa ainda na segunda palavra.
 
 ## Aplicar
 ```
-python helpers/modelos.py apply legenda-mista <pasta>/edit --param video=<pasta>/edit/cut.mp4 --param ate=30   --param legendas=<pasta>/edit/transcripts/cut.json --param destaques="garantia|200 mil"
+python helpers/modelos.py apply legenda-mista <pasta>/edit --param video=<pasta>/edit/cut.mp4 --param ate=30   --param legendas=<pasta>/edit/transcripts/cut.json --param destaques="garantia|motor"
 python helpers/cenas.py render <pasta>/edit/cenas/legenda-mista
 ```

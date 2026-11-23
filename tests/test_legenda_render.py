@@ -20,43 +20,61 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_legenda_mista_renders_red_strike_only_from_negation_pair_end(tmp_path):
+def _render(tmp_path, words, duration, highlights=()):
     import cenas
 
     source = tmp_path / "plain.mp4"
     subprocess.run(
-        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=0x333333:s=540x960:d=5:r=30",
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"color=0x333333:s=540x960:d={duration}:r=30",
          "-f", "lavfi", "-i", "anullsrc", "-shortest", "-pix_fmt", "yuv420p", str(source)],
         check=True,
     )
-    captions = _caps(tmp_path)
-    words = json.loads(captions.read_text(encoding="utf-8"))
+    captions = tmp_path / "captions.json"
+    captions.write_text(json.dumps(words), encoding="utf-8")
+    project = cenas.build("legenda", {
+        "video": str(source), "de": 0.0, "ate": duration,
+        "legendas": str(captions), "estilo": "mista", "destaques": highlights,
+    }, tmp_path / "hyperframes")
+    return cenas.render(project)
+
+
+def _red_pixels_at(video, seconds, crop):
+    frame = video.parent / "frame.png"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-ss", str(seconds), "-i", str(video), "-frames:v", "1", str(frame)],
+        check=True,
+    )
+    with Image.open(frame) as image:
+        r, g, b = np.asarray(image.convert("RGB").crop(crop), dtype=np.int16).transpose(2, 0, 1)
+    return np.count_nonzero((r > 170) & (r - g > 130) & (r - b > 125))
+
+
+def test_legenda_mista_renders_red_strike_only_from_negation_pair_end(tmp_path):
+    words = json.loads(_caps(tmp_path).read_text(encoding="utf-8"))
     words.extend([
         {"text": "não", "startMs": 3970, "endMs": 4100},
         {"text": "funciona", "startMs": 4100, "endMs": 4300},
     ])
-    captions.write_text(json.dumps(words), encoding="utf-8")
-    project = cenas.build("legenda", {
-        "video": str(source), "de": 0.0, "ate": 5.0,
-        "legendas": str(captions), "estilo": "mista", "destaques": ["funciona"],
-    }, tmp_path / "hyperframes")
-    video = cenas.render(project)
-
-    def red_pixels_at(seconds, crop):
-        frame = tmp_path / "frame.png"
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-ss", str(seconds), "-i", str(video), "-frames:v", "1", str(frame)],
-            check=True,
-        )
-        with Image.open(frame) as image:
-            r, g, b = np.asarray(image.convert("RGB").crop(crop), dtype=np.int16).transpose(2, 0, 1)
-        return np.count_nonzero((r > 170) & (r - g > 130) & (r - b > 125))
+    video = _render(tmp_path, words, 5, ["funciona"])
 
     same_line = (310, 860, 540, 1000)  # "não é", below the red word "carro"
-    assert red_pixels_at(1.30, same_line) == 0  # the second word ends at 1.40 s
-    assert red_pixels_at(1.70, same_line) > 1000
-    assert red_pixels_at(2.45, same_line) == 0  # next caption block
+    assert _red_pixels_at(video, 1.30, same_line) == 0  # the second word ends at 1.40 s
+    assert _red_pixels_at(video, 1.70, same_line) > 1000
+    assert _red_pixels_at(video, 2.45, same_line) == 0  # next caption block
 
     # A highlighted second word occupies its own line. Both words need a strike.
-    assert red_pixels_at(4.50, (470, 710, 610, 760)) > 500  # "não"
-    assert red_pixels_at(4.50, (195, 770, 885, 900)) > 1000  # "funciona"
+    assert _red_pixels_at(video, 4.50, (470, 710, 610, 760)) > 500  # "não"
+    assert _red_pixels_at(video, 4.50, (195, 770, 885, 900)) > 1000  # "funciona"
+
+
+def test_legenda_mista_strikes_before_the_next_block_when_the_cues_coincide(tmp_path):
+    timed_words = [
+        ("Esse", 50, 180), ("carro", 180, 400), ("barato", 450, 680),
+        ("não", 700, 1000), ("é", 1000, 1300), ("seguro", 1300, 1650),
+    ]
+    words = [{"text": word, "startMs": start, "endMs": end} for word, start, end in timed_words]
+    video = _render(tmp_path, words, 2.4)
+    same_line = (430, 895, 650, 990)  # "não é", below the red word "barato"
+    assert _red_pixels_at(video, 1.07, same_line) == 0
+    assert _red_pixels_at(video, 1.25, same_line) > 1000
+    assert _red_pixels_at(video, 1.37, same_line) == 0

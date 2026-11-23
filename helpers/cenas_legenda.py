@@ -16,6 +16,7 @@ transcript ({words: [{text, start, end, type}]}); only the words inside de..ate,
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -26,6 +27,7 @@ W, H = 1080, 1920
 ESTILOS = ("mista", "palavra-chave")
 PAUSA = 0.35          # a silence longer than this opens a new block
 MAX_PALAVRAS = 5
+STRIKE_DURATION = 0.16
 LIGA = {"a", "o", "as", "os", "e", "é", "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas", "um", "uma",
         "que", "se", "por", "pra", "para", "com", "ao", "à", "eu", "tu", "ele", "ela", "me", "te", "lhe", "seu", "sua",
         "só", "já", "mas", "ou", "nem", "the", "a", "an", "of", "to", "in", "on", "and", "or", "is", "it", "that",
@@ -40,31 +42,61 @@ def _norm(w: str) -> str:
 
 
 def load_words(path: Path, de: float, ate: float) -> list[dict]:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"JSON inválido: {exc}") from exc
+
+    transcript = isinstance(raw, dict)
+    entries = raw.get("words") if transcript else raw
+    if not isinstance(entries, list):
+        raise ValueError("esperada uma lista de legendas Remotion ou um transcript com lista 'words'")
+    start_key, end_key, units = ("start", "end", 1) if transcript else ("startMs", "endMs", 1000)
+
     out = []
-    if isinstance(raw, list):                                   # Remotion captions.json
-        for c in raw:
-            t0, t1 = c.get("startMs"), c.get("endMs")
-            if t0 is None:
-                continue
-            out.append((str(c.get("text", "")).strip(), t0 / 1000, (t1 if t1 is not None else t0 + 300) / 1000))
-    else:                                                       # transcribe.py transcript
-        for w in raw.get("words", []):
-            if w.get("type", "word") != "word" or w.get("start") is None:
-                continue
-            out.append((str(w.get("text", "")).strip(), float(w["start"]), float(w.get("end", w["start"] + 0.3))))
-    return [{"texto": t, "t0": round(a - de, 3), "t1": round(b - de, 3)} for t, a, b in out
-            if t and de <= a < ate]
+    previous_start = -1.0
+    for index, word in enumerate(entries, 1):
+        if not isinstance(word, dict):
+            raise ValueError(f"entrada {index}: esperada uma palavra com texto e tempos")
+        if transcript and word.get("type", "word") != "word":
+            continue
+        text = word.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"entrada {index}: texto da palavra está vazio ou inválido")
+        start_raw, end_raw = word.get(start_key), word.get(end_key)
+        if isinstance(start_raw, bool) or isinstance(end_raw, bool):
+            raise ValueError(f"entrada {index}: {start_key} e {end_key} precisam ser tempos numéricos")
+        try:
+            start = float(start_raw) / units
+            end = float(end_raw) / units if end_raw is not None else start + 0.3
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"entrada {index}: {start_key} ou {end_key} inválido") from exc
+        if not (0 <= start <= end and math.isfinite(end)):
+            raise ValueError(f"entrada {index}: tempos precisam ser finitos, não negativos e em ordem")
+        if start < previous_start:
+            raise ValueError(f"entrada {index}: palavras fora de ordem cronológica")
+        previous_start = start
+        if de <= start < ate:
+            out.append({"texto": text.strip(), "t0": round(start - de, 3), "t1": round(end - de, 3)})
+    if not out:
+        raise ValueError(f"sem palavras com início no trecho de {de:g} a {ate:g} s")
+    return out
 
 
-def blocks(words: list[dict]) -> list[list[dict]]:
+def _continues(previous: dict, word: dict) -> bool:
+    return word["t0"] - previous["t1"] <= PAUSA and not re.search(r"[.!?]$", previous["texto"])
+
+
+def blocks(words: list[dict], *, keep_negation: bool = False) -> list[list[dict]]:
     out: list[list[dict]] = []
-    for w in words:
-        if out and (w["t0"] - out[-1][-1]["t1"] <= PAUSA) and len(out[-1]) < MAX_PALAVRAS \
-                and not re.search(r"[.!?]$", out[-1][-1]["texto"]):
-            out[-1].append(w)
+    for i, word in enumerate(words):
+        pair = (keep_negation and _norm(word["texto"]) in NEGA and i + 1 < len(words)
+                and _continues(word, words[i + 1]))
+        # Reserve one slot for the next word in a negation pair.
+        if out and len(out[-1]) + int(pair) < MAX_PALAVRAS and _continues(out[-1][-1], word):
+            out[-1].append(word)
         else:
-            out.append([w])
+            out.append([word])
     return out
 
 
@@ -92,16 +124,25 @@ def validate(dados: dict) -> list[str]:
     v = dados.get("video")
     if not v or not Path(v).exists():
         probs.append(f"video não encontrado: {v!r}")
-    de, ate = float(dados.get("de", 0)), float(dados.get("ate", 0))
-    if ate <= de:
-        probs.append(f"ate ({ate}) precisa ser maior que de ({de})")
+    try:
+        de, ate = float(dados.get("de", 0)), float(dados.get("ate", 0))
+    except (TypeError, ValueError, OverflowError):
+        return probs + ["de e ate precisam ser tempos numéricos"]
+    valid_window = 0 <= de < ate and math.isfinite(ate)
+    if not valid_window:
+        probs.append(f"de ({de}) e ate ({ate}) precisam ser finitos e atender 0 <= de < ate")
     elif v and Path(v).exists():
         dur = _probe_dur(Path(v))
         if dur and ate > dur + 0.05:
             probs.append(f"ate ({ate}) passa do fim do video ({dur:.2f} s)")
     lg = dados.get("legendas")
-    if not lg or not Path(lg).exists():
+    if not isinstance(lg, (str, Path)) or not Path(lg).is_file():
         probs.append(f"legendas (captions.json ou transcript) não encontradas: {lg!r}")
+    elif valid_window:
+        try:
+            load_words(Path(lg), de, ate)
+        except (OSError, ValueError) as exc:
+            probs.append(f"legendas: {exc}")
     if dados.get("estilo", "mista") not in ESTILOS:
         probs.append(f"estilo '{dados.get('estilo')}' não existe (use {', '.join(ESTILOS)})")
     return probs
@@ -129,7 +170,7 @@ def _lines(bloco: list[dict], forte: int | None) -> list[list[int]]:
 
 # Measure layout offsets so a font refresh during a seek ignores the word-entry transforms.
 _STRIKE_JS = """
-    function drawStrike(id, firstId, lastId, at) {
+    function drawStrike(id, firstId, lastId, at, duration) {
       const strike = document.getElementById(id);
       const first = document.getElementById(firstId);
       const last = document.getElementById(lastId);
@@ -146,7 +187,7 @@ _STRIKE_JS = """
       if (document.fonts) document.fonts.ready.then(measure);
       // Set both components in GSAP to avoid parsing a collapsed CSS matrix.
       gsap.set(strike, {scaleX:0, rotation:-4});
-      tl.to(strike, {scaleX:1, duration:0.16, ease:"whip"}, at);
+      tl.to(strike, {scaleX:1, duration, ease:"whip"}, at);
     }
 """
 
@@ -162,7 +203,7 @@ def build(proj: Project, dados: dict) -> Path:
     destaques = {_norm(x) for x in (dest.split("|") if isinstance(dest, str) else dest) if x}
     altura = float(dados.get("altura", 0.42 if estilo == "mista" else 0.74))
     words = load_words(Path(dados["legendas"]), de, ate)
-    bls = blocks(words)
+    bls = blocks(words, keep_negation=estilo == "mista")
 
     html_b, tl = [], ["const tl = gsap.timeline({ paused: true });"]
     strikes = []
@@ -185,13 +226,21 @@ def build(proj: Project, dados: dict) -> Path:
         risco = []
         neg = next((i for i, w in enumerate(bloco[:-1]) if _norm(w["texto"]) in NEGA), None)
         if estilo == "mista" and neg is not None:
-            at = bloco[neg + 1]["t1"]
+            following = bloco[neg + 1]
+            frame = 1 / proj.fps
+            latest_start = b_end - STRIKE_DURATION - frame
+            at = following["t1"]
+            # If the block is about to end, use the second word's own hold for the strike.
+            if at > latest_start:
+                first_visible = min(following["t0"] + frame, (following["t0"] + b_end) / 2)
+                at = round(max(first_visible, latest_start), 6)
             for line in lines:
                 covered = [i for i in line if neg <= i <= neg + 1]
                 if covered:
                     strike_id = f"r{b}-{len(risco)}"
                     risco.append(f'<div class="risco" id="{strike_id}"></div>')
-                    strikes.append(f'drawStrike("{strike_id}", "p{k + covered[0]}", "p{k + covered[-1]}", {at});')
+                    strikes.append(f'drawStrike("{strike_id}", "p{k + covered[0]}", "p{k + covered[-1]}", '
+                                   f'{at}, {STRIKE_DURATION});')
         html_b.append(f'<div class="bloco" id="b{b}">{body}{"".join(risco)}</div>')
         tl.append(f'tl.set("#b{b}", {{opacity:1}}, {bloco[0]["t0"]}); tl.set("#b{b}", {{opacity:0}}, {round(b_end, 3)});')
         for i, w in enumerate(bloco):
