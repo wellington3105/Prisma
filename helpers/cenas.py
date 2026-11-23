@@ -61,6 +61,9 @@ CENAS = {
     "lyric-carro": {"campos": ["video", "de", "ate", "palavras", "letra", "beats", "rajadas", "flashes", "paleta"]},
     # Captions over a stretch of the clip: "mista" (sizes and colours per word, strike) or "palavra-chave".
     "legenda": {"campos": ["video", "de", "ate", "legendas", "estilo", "destaques", "altura"]},
+    # Before x after: two phones in sync with a fixed CTA ("lado") or raw-then-edited full frame ("sequencia").
+    "antes-depois": {"campos": ["antes", "depois", "de_antes", "de_depois", "duracao", "layout", "corte",
+                                "rotulo_antes", "rotulo_depois", "cta", "som", "fundo"]},
 }
 
 
@@ -78,6 +81,9 @@ def validate(cena: str, dados: dict) -> list[str]:
     if cena == "legenda":
         import cenas_legenda
         return probs + cenas_legenda.validate(dados)
+    if cena == "antes-depois":
+        import cenas_antes
+        return probs + cenas_antes.validate(dados)
     foto = dados.get("foto")
     if not foto or not Path(foto).exists():
         probs.append(f"foto não encontrada: {foto!r}")
@@ -169,6 +175,9 @@ def build(cena: str, dados: dict, out: Path) -> Path:
     if cena == "legenda":
         import cenas_legenda
         return cenas_legenda.build(proj, dados)
+    if cena == "antes-depois":
+        import cenas_antes
+        return cenas_antes.build(proj, dados)
     return _build_card(proj, cena, dados)
 
 
