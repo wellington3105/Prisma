@@ -1,0 +1,84 @@
+{
+  "slug": "card-ficha",
+  "nivel": "tipo",
+  "nome": "Card de ficha técnica",
+  "familia": "grafismo",
+  "host": "cena",
+  "acento": false,
+  "cena": "card-ficha",
+  "dados": {
+    "titulo": "Nome do carro",
+    "versao": "Versão",
+    "pilulas": [
+      {
+        "icone": "cor",
+        "texto": "Cor",
+        "cor": "#e6e8ea"
+      },
+      {
+        "icone": "potencia",
+        "texto": "0 cv"
+      },
+      {
+        "icone": "cambio",
+        "texto": "automático"
+      }
+    ],
+    "frase": "",
+    "assinatura": "",
+    "foco": "center 62%"
+  },
+  "parametros": {
+    "foto": {
+      "obrigatorio": true,
+      "o_que": "foto do carro em fundo limpo (claro), de lado ou 3/4 traseira"
+    },
+    "titulo": {
+      "o_que": "marca e modelo, ex.: Jeep Compass"
+    },
+    "versao": {
+      "o_que": "versão em cinza, ex.: Limited 2.0 Turbo"
+    },
+    "pilulas": {
+      "o_que": "até 3: icone:texto[:cor], separadas por |; ícones: cor, cronometro, cambio, motor, km, ano, combustivel, potencia"
+    },
+    "frase": {
+      "o_que": "uma frase de até ~70 caracteres; vazia = cena de 6,5 s sem digitação"
+    },
+    "assinatura": {
+      "o_que": "@ da loja no rodapé"
+    },
+    "fundo": {
+      "o_que": "cor de fundo da cena (padrão: o tom do rodapé da foto, clareado)"
+    },
+    "foco": {
+      "o_que": "object-position da foto no card, ex.: center 62%"
+    },
+    "zoom": {
+      "o_que": "aproximação da foto dentro do card (1 = inteira; 1.3–1.6 dá presença a um carro pequeno na foto)"
+    }
+  },
+  "demo": {
+    "titulo": "Mercedes-AMG GT",
+    "versao": "Black Series",
+    "pilulas": [
+      {
+        "icone": "cor",
+        "texto": "Amarelo",
+        "cor": "#e9a93a"
+      },
+      {
+        "icone": "cronometro",
+        "texto": "3,2s"
+      },
+      {
+        "icone": "potencia",
+        "texto": "730 cv"
+      }
+    ],
+    "frase": "Do autódromo para a rua, movido por uma obsessão: desempenho.",
+    "assinatura": "@sualoja",
+    "foco": "center 58%",
+    "zoom": 1.45
+  }
+}

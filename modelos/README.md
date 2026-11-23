@@ -21,7 +21,8 @@ uv run python helpers/modelos.py galeria --abrir
 1. Crie `modelos/tipos/<slug>/` (ou `estilos/<slug>/`) com `modelo.json` e `MODELO.md`. A ficha precisa
    das seções `## O que é`, `## Quando usar`, `## Quando não usar`, `## Contenção`.
 2. `modelo.json`: `slug` igual ao nome da pasta, `nivel` (`tipo`/`estilo`), `familia`, `host`
-   (`montagem` = plano do `beat_edit`; `reel-fala` = `state.json` style + `edit-data.json`), `acento` (conta para
+   (`montagem` = plano do `beat_edit`; `reel-fala` = `state.json` style + `edit-data.json`; `cena` = cena
+   HyperFrames inteira montada por dados em `helpers/cenas.py`, ex.: `card-ficha`), `acento` (conta para
    o limite de 3) e a receita (`aplica` para montagem; `style` + `edit_data` para Reel de fala; `tipos` +
    `regras` + `sinais` para estilo).
 3. `modelos.py check` (também roda no `tests/test_catalog.py`) recusa nome de transição, rampa, efeito ou

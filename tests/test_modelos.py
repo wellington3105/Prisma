@@ -102,7 +102,7 @@ def test_estilo_unknown_tipo():
 
 
 # ---------------------------------------------------------------- Task 2
-V1_TIPOS = {"l-cut", "freeze-frame", "speed-ramp", "transicao-velocidade", "bullet-time", "velocity-edit", "whip-pan", "flash", "zoom-through",
+V1_TIPOS = {"card-ficha", "l-cut", "freeze-frame", "speed-ramp", "transicao-velocidade", "bullet-time", "velocity-edit", "whip-pan", "flash", "zoom-through",
             "rgb-split", "shake-impacto", "zoom-punch", "zoom-nos-cortes", "push-in", "flash-na-troca", "distorcao-na-troca"}
 V1_ESTILOS = {"montagem-na-batida", "reel-fala-broll"}
 
