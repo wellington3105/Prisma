@@ -1,0 +1,42 @@
+{
+  "slug": "legenda-palavra-chave",
+  "nivel": "tipo",
+  "nome": "Legenda com palavra-chave colorida",
+  "familia": "legenda",
+  "host": "cena",
+  "acento": false,
+  "cena": "legenda",
+  "dados": {
+    "de": 0.0,
+    "estilo": "palavra-chave"
+  },
+  "parametros": {
+    "video": {
+      "obrigatorio": true,
+      "o_que": "o corte aprovado (ou um trecho dele)"
+    },
+    "de": {
+      "o_que": "início do trecho (s)"
+    },
+    "ate": {
+      "obrigatorio": true,
+      "o_que": "fim do trecho (s)"
+    },
+    "legendas": {
+      "obrigatorio": true,
+      "o_que": "captions.json do Remotion ou transcript do transcribe.py"
+    },
+    "destaques": {
+      "o_que": "palavras que sempre viram destaque, separadas por | (números já são)"
+    },
+    "altura": {
+      "o_que": "altura do bloco no quadro (fração)"
+    }
+  },
+  "demo": {
+    "video": "{corte}",
+    "de": 0.0,
+    "ate": 6.0,
+    "legendas": "{legendas}"
+  }
+}
