@@ -311,6 +311,8 @@ def cena_dados(m: Modelo, base: dict, params: dict[str, str]) -> dict:
                     p["cor"] = ":".join(parts[2:])
                 pills.append(p)
             dados["pilulas"] = pills
+        elif k == "cards":
+            dados["cards"] = [c for c in v.split("|") if c]
         else:
             dados[k] = v
     return dados

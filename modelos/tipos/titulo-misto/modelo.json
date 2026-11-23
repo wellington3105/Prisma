@@ -1,0 +1,69 @@
+{
+  "slug": "titulo-misto",
+  "nivel": "tipo",
+  "nome": "Título misto (três vozes) + cards voando",
+  "familia": "grafismo",
+  "host": "cena",
+  "acento": true,
+  "cena": "titulo-misto",
+  "dados": {
+    "de": 0.0,
+    "cor": "#c8102e",
+    "altura": 0.17,
+    "entra": 0.25
+  },
+  "parametros": {
+    "video": {
+      "obrigatorio": true,
+      "o_que": "o clipe do apresentador (o corte aprovado ou o take)"
+    },
+    "de": {
+      "o_que": "início do trecho no clipe (s)"
+    },
+    "ate": {
+      "obrigatorio": true,
+      "o_que": "fim do trecho (s); 3–5 s de gancho"
+    },
+    "esquerda": {
+      "o_que": "palavra pequena acima do início da gigante"
+    },
+    "direita": {
+      "o_que": "palavra pequena acima do fim da gigante"
+    },
+    "palavra": {
+      "obrigatorio": true,
+      "o_que": "a palavra gigante (curta: 4–9 letras)"
+    },
+    "sub": {
+      "o_que": "a linha de baixo, entra palavra por palavra"
+    },
+    "acento": {
+      "o_que": "uma palavra da sub em serifada itálica na cor de acento"
+    },
+    "cor": {
+      "o_que": "cor de acento (palavra gigante, pixels, risco)"
+    },
+    "cards": {
+      "o_que": "até 2 fotos que voam do canto inferior esquerdo (lista; no apply: cards=a.jpg|b.jpg)"
+    },
+    "altura": {
+      "o_que": "altura do título no quadro (fração; padrão 0.17, acima da cabeça)"
+    },
+    "entra": {
+      "o_que": "quando o título começa, a partir do início do trecho (s)"
+    }
+  },
+  "demo": {
+    "video": "{fala}",
+    "de": 0.0,
+    "ate": 4.0,
+    "esquerda": "O carro",
+    "direita": "certo",
+    "palavra": "Cayenne",
+    "sub": "pela metade do preço",
+    "acento": "metade",
+    "cards": [
+      "{foto}"
+    ]
+  }
+}

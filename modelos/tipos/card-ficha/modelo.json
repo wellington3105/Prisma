@@ -59,6 +59,7 @@
     }
   },
   "demo": {
+    "foto": "{foto}",
     "titulo": "Mercedes-AMG GT",
     "versao": "Black Series",
     "pilulas": [

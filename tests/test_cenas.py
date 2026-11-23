@@ -153,6 +153,73 @@ def test_modelos_apply_cena_builds_project_from_params():
         assert dados["titulo"] == "Jeep Compass" and dados["pilulas"], dados
 
 
+# ---------------------------------------------------------------- titulo-misto
+def _clip(d: Path, dur: float = 5.0) -> Path:
+    f = d / "fala.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=s=720x1280:d={dur}:r=30",
+                    "-f", "lavfi", "-i", f"sine=f=220:d={dur}", "-shortest", "-pix_fmt", "yuv420p", str(f)], check=True)
+    return f
+
+
+def _titulo(d: Path, **kw) -> dict:
+    base = {"video": str(_clip(d)), "de": 0.5, "ate": 4.5, "esquerda": "Faça", "direita": "melhores",
+            "palavra": "Roteiros", "sub": "com esta fórmula", "cards": [str(_photo(d))]}
+    base.update(kw)
+    return base
+
+
+def test_titulo_misto_builds_over_the_clip_with_its_sound():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("titulo-misto", _titulo(d), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        dur = float(re.search(r'data-duration="([\d.]+)"', html).group(1))
+        assert abs(dur - 4.0) < 1e-6, dur
+        assert re.search(r'<video[^>]+data-media-start="0.5"[^>]+muted', html), "o vídeo entra mudo, a partir de 'de'"
+        assert re.search(r'<audio[^>]+data-media-start="0.5"', html), "o som original vem num <audio> separado"
+        assert (out / "assets" / "media" / "fala.mp4").exists()
+        for w in ("Faça", "melhores", "Roteiros"):
+            assert w in html
+        assert html.count('class="sw"') == 3, "sublinha palavra por palavra"
+        assert html.count('class="cartao"') == 1
+        assert html.count('class="px"') >= 6, "blocos de pixel na entrada da palavra gigante"
+
+
+def test_titulo_misto_validates():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        ok = _titulo(d)
+        assert cenas.validate("titulo-misto", ok) == []
+        assert any("palavra" in p for p in cenas.validate("titulo-misto", dict(ok, palavra="")))
+        assert any("video" in p for p in cenas.validate("titulo-misto", dict(ok, video=str(d / "x.mp4"))))
+        assert any("ate" in p for p in cenas.validate("titulo-misto", dict(ok, de=3, ate=2)))
+        assert any("cards" in p for p in cenas.validate("titulo-misto", dict(ok, cards=[ok["cards"][0]] * 3)))
+        assert any("campo" in p for p in cenas.validate("titulo-misto", dict(ok, titulo="x")))
+
+
+def test_titulo_misto_accent_word_is_the_serif_italic():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("titulo-misto", _titulo(d, acento="fórmula", sub="com esta fórmula"), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert re.search(r'class="sw acento"[^>]*>fórmula<', html), html[-3000:]
+        assert "PrismaLora" in html
+
+
+def test_modelos_apply_titulo_misto_splits_cards():
+    import modelos_receitas as R
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        clip, foto = _clip(d), _photo(d)
+        R.apply_file("titulo-misto", d / "edit", None, {"video": str(clip), "ate": "3.5", "palavra": "Garantia",
+                                                        "cards": f"{foto}|{foto}"})
+        dados = json.loads((d / "edit" / "cenas" / "titulo-misto" / "dados.json").read_text(encoding="utf-8"))
+        assert dados["cards"] == [str(foto), str(foto)], dados
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

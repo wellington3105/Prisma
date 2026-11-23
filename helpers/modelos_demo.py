@@ -210,9 +210,18 @@ def demo_photo() -> Path:
 
 
 def _render_cena(m: R.Modelo, work: Path) -> Path:
-    """Host "cena": the recipe's demo data on the pinned studio photo, built and rendered by cenas.py."""
+    """Host "cena": the recipe's demo data, built and rendered by cenas.py. In the demo data "{foto}" is the
+    pinned studio photo and "{fala}" the regression talking-head clip (local only, git-ignored)."""
     import cenas
-    dados = R.cena_dados(m, {**m.dados.get("demo", {}), "foto": str(demo_photo())}, {})
+    subs = {"{foto}": lambda: str(demo_photo()), "{fala}": lambda: str(SKILL / "tests" / "fixture" / "cayenne_clip.mp4")}
+
+    def fill(v):
+        if isinstance(v, str) and v in subs:
+            return subs[v]()
+        if isinstance(v, list):
+            return [fill(x) for x in v]
+        return v
+    dados = R.cena_dados(m, {k: fill(v) for k, v in m.dados.get("demo", {}).items()}, {})
     proj = cenas.build(m.dados["cena"], dados, work / "cena")
     return cenas.render(proj, log=work / "render.log")
 
