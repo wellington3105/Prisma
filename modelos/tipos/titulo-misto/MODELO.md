@@ -29,3 +29,21 @@ Lora itálica) e curvas medidas. A tinta das palavras pequenas (escura ou branca
 python helpers/modelos.py apply titulo-misto <pasta>/edit --param video=<pasta>/edit/cut.mp4 --param ate=4   --param esquerda="O carro" --param direita=certo --param palavra=Cayenne   --param sub="pela metade do preço" --param acento=metade --param cards=foto.jpg
 python helpers/cenas.py render <pasta>/edit/cenas/titulo-misto     # -> out/render.mp4 (troca os 4 s do início)
 ```
+
+## Entrada sincronizada com a fala
+
+Informe a frase falada em **frase_entrada** e o caminho em **transcricao**. Use o JSON de
+**transcribe.py** ou o **captions.json** produzido para o mesmo arquivo em **video**. A frase inteira
+precisa estar no trecho selecionado entre **de** e **ate**. A primeira palavra aciona o começo da
+animação. A palavra gigante entra depois, no tempo próprio da coreografia. Se ela ficar fora do
+trecho, ajuste **ate**.
+
+Se a frase se repetir no trecho, escolha **ocorrencia=1**, **ocorrencia=2** e assim por diante.
+Separe as palavras com espaços. A busca ignora maiúsculas, acentos e pontuação dentro de cada palavra.
+Para posicionar a entrada manualmente, use **entra** em segundos.
+
+Exemplo com caminhos relativos ao local de execução.
+
+~~~powershell
+python helpers/modelos.py apply titulo-misto edit --param "video=edit/remotion/public/cut.mp4" --param "de=0.5" --param "ate=4.5" --param "palavra=Motor" --param "esquerda=Este" --param "transcricao=edit/remotion/public/captions.json" --param "frase_entrada=motor que"
+~~~

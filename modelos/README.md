@@ -33,5 +33,5 @@ uv run python helpers/modelos.py galeria --abrir
 
 Feitos em 2026-11-22: L-cut alternado com J (`l-cut`, host `corte`), freeze frame (`freeze-frame`). Faltam: smash cut (precisa de corte da música antes do impacto no `beat_edit`), mask transition / passar pelo objeto, morph, recorte
 congelado com contorno, cross-cut, legenda que segue a boca, peças de interface (HUD de filmadora, chat
-digitando, cursor no CTA, barra de progresso, leque, carimbo), âncora por frase nas cenas HyperFrames e o
+digitando, cursor no CTA, barra de progresso, leque, carimbo), ampliar a entrada por frase do título misto a outras cenas HyperFrames e o
 estilo VSL com interface animada (recriado do zero; o skill-reel não tem licença).
