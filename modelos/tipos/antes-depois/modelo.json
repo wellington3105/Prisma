@@ -1,0 +1,61 @@
+{
+  "slug": "antes-depois",
+  "nivel": "tipo",
+  "nome": "Antes × depois (dois celulares + CTA, ou cru → editado)",
+  "familia": "formato",
+  "host": "cena",
+  "acento": false,
+  "cena": "antes-depois",
+  "dados": {
+    "layout": "lado",
+    "rotulo_antes": "Antes",
+    "rotulo_depois": "Depois"
+  },
+  "parametros": {
+    "antes": {
+      "obrigatorio": true,
+      "o_que": "o take cru (ou o vídeo antigo do cliente)"
+    },
+    "depois": {
+      "obrigatorio": true,
+      "o_que": "o mesmo trecho editado (render da Fase 2)"
+    },
+    "de_antes": {
+      "o_que": "início no take cru (s)"
+    },
+    "de_depois": {
+      "o_que": "início no editado (s)"
+    },
+    "duracao": {
+      "obrigatorio": true,
+      "o_que": "duração da cena (s, até 30)"
+    },
+    "layout": {
+      "o_que": "lado (dois celulares + CTA) ou sequencia (cru → editado em tela cheia)"
+    },
+    "corte": {
+      "o_que": "sequencia: quando vira o editado (s)"
+    },
+    "rotulo_antes": {
+      "o_que": "texto da pílula do cru"
+    },
+    "rotulo_depois": {
+      "o_que": "texto da pílula do editado"
+    },
+    "cta": {
+      "o_que": "lado: 'linha pequena|linha forte' fixas embaixo"
+    },
+    "som": {
+      "o_que": "lado: de qual vídeo vem o som (depois | antes)"
+    },
+    "fundo": {
+      "o_que": "lado: fundo CSS atrás dos celulares"
+    }
+  },
+  "demo": {
+    "antes": "{corte}",
+    "depois": "{editado}",
+    "duracao": 6.0,
+    "cta": "Quer o seu carro assim?|Chama no direct"
+  }
+}

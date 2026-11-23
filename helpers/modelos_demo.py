@@ -213,12 +213,13 @@ def _render_cena(m: R.Modelo, work: Path) -> Path:
     """Host "cena": the recipe's demo data, built and rendered by cenas.py. In the demo data "{foto}" is the
     pinned studio photo, "{fala}" the regression talking-head clip (local only, git-ignored) and
     "{montagem}" the montagem-na-batida demo (rendered first if missing); "{corte}" / "{legendas}" the
-    Phase-2 fixture cut and its word captions."""
+    Phase-2 fixture cut and its word captions; "{editado}" the legenda-mista demo (that same cut, edited)."""
     import cenas
     subs = {"{foto}": lambda: str(demo_photo()), "{fala}": lambda: str(SKILL / "tests" / "fixture" / "cayenne_clip.mp4"),
             "{montagem}": lambda: str(render_demo("montagem-na-batida")),
             "{corte}": lambda: str(_fixture(galeria_root() / "_work") / "remotion" / "public" / "cut.mp4"),
-            "{legendas}": lambda: str(_fixture(galeria_root() / "_work") / "remotion" / "public" / "captions.json")}
+            "{legendas}": lambda: str(_fixture(galeria_root() / "_work") / "remotion" / "public" / "captions.json"),
+            "{editado}": lambda: str(render_demo("legenda-mista"))}
 
     def fill(v):
         if isinstance(v, str) and v in subs:

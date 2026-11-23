@@ -460,6 +460,60 @@ def test_legenda_mista_keeps_negation_pair_in_one_block_at_the_word_limit():
         assert 'drawStrike("r1-0", "p4", "p5",' in html
 
 
+# ---------------------------------------------------------------- antes-depois
+def _ad(d: Path, **kw) -> dict:
+    a = _clip(d, 5.0)
+    b = d / "editado.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(a), "-vf", "hue=s=0", str(b)], check=True)
+    base = {"antes": str(a), "depois": str(b), "duracao": 4.0, "cta": "Quer um vídeo assim?|Chama no direct"}
+    base.update(kw)
+    return base
+
+
+def test_antes_depois_lado_two_phones_and_fixed_cta():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("antes-depois", _ad(d), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert abs(float(re.search(r'data-duration="([\d.]+)"', html).group(1)) - 4.0) < 1e-6
+        assert html.count('class="fone ') == 2 and 'class="fone antes"' in html and 'class="fone depois"' in html
+        assert ">Antes<" in html and ">Depois<" in html
+        assert "Quer um vídeo assim?" in html and "Chama no direct" in html
+        vids = re.findall(r'<video[^>]+>', html)
+        assert len(vids) == 2 and all("muted" in v for v in vids)
+        auds = re.findall(r'<audio[^>]+src="([^"]+)"', html)
+        assert auds == ["assets/media/editado.mp4"], auds    # the sound is the edited one by default
+
+
+def test_antes_depois_sequencia_cuts_and_swaps_the_pill():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        out = cenas.build("antes-depois", _ad(d, layout="sequencia", corte=1.5, rotulo_antes="Cru",
+                                              rotulo_depois="Editado"), d / "proj")
+        html = (out / "index.html").read_text(encoding="utf-8")
+        assert 'class="fone ' not in html
+        v = {m.group(1): m.group(0) for m in re.finditer(r'<video id="(\w+)"[^>]+>', html)}
+        assert 'data-start="0"' in v["va"] and 'data-duration="1.5"' in v["va"]
+        assert 'data-start="1.5"' in v["vb"] and 'data-duration="2.5"' in v["vb"]
+        assert ">Cru<" in html and ">Editado<" in html
+        assert "/* corte @1.5 */" in html
+        assert len(re.findall(r'<audio ', html)) == 2       # each part keeps its own sound
+
+
+def test_antes_depois_validates():
+    import cenas
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        ok = _ad(d)
+        assert cenas.validate("antes-depois", ok) == []
+        assert any("depois" in p for p in cenas.validate("antes-depois", dict(ok, depois=str(d / "x.mp4"))))
+        assert any("layout" in p for p in cenas.validate("antes-depois", dict(ok, layout="grade")))
+        assert any("corte" in p for p in cenas.validate("antes-depois", dict(ok, layout="sequencia", corte=9)))
+        assert any("duracao" in p for p in cenas.validate("antes-depois", dict(ok, duracao=60)))
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):
