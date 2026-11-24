@@ -111,6 +111,16 @@ def style_digest(p: Path) -> str:
         else:
             out.append("  · cor de destaque: não se aplica (os estilos escolhidos não usam destaque)")
     out.append(f'  · elementos: {", ".join(els) if els else "nenhum"}')
+    # The "Modelos de edição" section of the tab: library modelos the user ticked. Picking is the look;
+    # the parameters (the giant word, the photo, the stretch) come from the video, so fill them yourself.
+    mods = d.get("modelos") or []
+    if mods:
+        names = d.get("modelosNames") or []
+        out.append("  · modelos de edição: " + ", ".join(
+            f"{s} ({names[i]})" if i < len(names) and names[i] != s else s for i, s in enumerate(mods)))
+        out.append("    aplique cada um: `python helpers/modelos.py show <slug>` (parâmetros) e "
+                   "`python helpers/modelos.py apply <slug> <edit> --param …` (preencha com o vídeo e a transcrição); "
+                   "modelos de cena (host cena): depois `python helpers/cenas.py render <edit>/cenas/<slug>`")
     # everything NOT chosen is an instruction too — it is what must stay out
     off = [k for k, v in (d.get("elements") or {}).items() if not v]
     if off:

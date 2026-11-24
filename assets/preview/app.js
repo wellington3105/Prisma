@@ -1184,6 +1184,7 @@ async function applyState(data) {
   const s0 = S.state.style || {};
   S.style = { ...d0, ...s0, elements: { ...d0.elements, ...(s0.elements || {}) } };
   S.style.elements = { ...defaultStyle().elements, ...((S.state.style || {}).elements || {}) };
+  S.style.modelos = Array.isArray(s0.modelos) ? s0.modelos.slice() : [];
   $('setupNote').value = S.style.note || '';
   // the skill opened the gate → land the user on the Estilo tab
   if (S.state.awaitingStyle) S.tab = 'style';
@@ -1828,6 +1829,7 @@ function renderSetup() {
   radios($('optHeadline'), 'headlines', S.style.headline);
   radios($('optCaptions'), 'captions', S.style.captions);
   radios($('optCards'), 'cards', S.style.cardStyle);
+  renderModelos();
   renderAccents();
 
   const host = $('optElements');
@@ -1879,6 +1881,101 @@ function renderEngineChip() {
 }
 loadEngines();
 
+// ---- Modelos de edição: the library (helpers/modelos_picker.py → GET /api/modelos) ----
+// Cards play the REAL rendered demo of each modelo (muted, looping, only while on screen). Picking is the
+// look; the parameters (the giant word, the photo, the stretch) are filled by the skill from the video.
+var MODELOS = null;
+function modelo(slug) { return MODELOS && MODELOS.modelos.find((m) => m.slug === slug); }
+async function loadModelos() {
+  try { MODELOS = await (await fetch('/api/modelos')).json(); } catch (e) { MODELOS = null; }
+  if (S.tab === 'style') renderSetup();
+}
+var modelosIO = null;
+var HOST_LABEL = { cena: 'cena', montagem: 'montagem', corte: 'corte', 'reel-fala': 'Reel de fala' };
+var NOTE_IDLE = 'a biblioteca do Prisma: passe o mouse para ver, clique para escolher (vários); os parâmetros eu preencho com o seu vídeo';
+function renderModelos() {
+  const host = $('optModelos');
+  if (!host) return;
+  if (!MODELOS || !MODELOS.modelos || !MODELOS.modelos.length) {
+    host.innerHTML = '';
+    host.dataset.built = '';
+    return;
+  }
+  // built once: a click only repaints the ticks, so the playing demos never restart
+  if (host.dataset.built !== String(MODELOS.modelos.length)) {
+    host.innerHTML = '';
+    if (modelosIO) modelosIO.disconnect();
+    modelosIO = new IntersectionObserver((ents) => {
+      for (const en of ents) {
+        if (en.isIntersecting) en.target.play().catch(() => {}); else en.target.pause();
+      }
+    }, { rootMargin: '120px' });
+    const grupos = new Map();
+    for (const m of MODELOS.modelos) {
+      const k = m.nivel === 'estilo' ? 'Estilos (combinações prontas)' : m.familia;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(m);
+    }
+    for (const [titulo, ms] of grupos) {
+      el('div', 'mod-fam-title', host).textContent = titulo;
+      const row = el('div', 'mod-row', host);
+      for (const m of ms) {
+        const card = el('div', 'mod', row);
+        card.dataset.slug = m.slug;
+        card.title = `${m.oQueE}\n\nQuando usar: ${m.quandoUsar}\n\nQuando não usar: ${m.quandoNaoUsar}`;
+        const media = el('div', 'mod-media', card);
+        if (m.demo) {
+          const v = document.createElement('video');
+          v.src = `/modelos-media/${m.slug}/demo.mp4`;
+          v.poster = `/modelos-media/${m.slug}/poster.jpg`;
+          v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'metadata';
+          media.appendChild(v);
+          modelosIO.observe(v);
+        } else {
+          el('div', 'mod-vazio', media).textContent = 'sem demo ainda';
+        }
+        el('div', 'mod-name', card).textContent = m.nome;
+        const tags = el('div', 'mod-tags', card);
+        if (m.acento) el('span', 'mod-tag acento', tags).textContent = 'acento';
+        el('span', 'mod-tag', tags).textContent = HOST_LABEL[m.host] || m.host;
+        el('div', 'opt-mark', card);
+      }
+    }
+    host.dataset.built = String(MODELOS.modelos.length);
+  }
+  paintModelos();
+}
+function paintModelos() {
+  const on = new Set(S.style.modelos || []);
+  document.querySelectorAll('#optModelos .mod').forEach((c) => c.classList.toggle('on', on.has(c.dataset.slug)));
+  const note = $('modelosNote');
+  if (!note || !MODELOS) return;
+  const ac = (S.style.modelos || []).filter((s) => (modelo(s) || {}).acento).length;
+  note.classList.remove('warn');
+  note.textContent = on.size ? `${on.size} escolhido(s) · acentos ${ac}/${MODELOS.maxAcentos}` : NOTE_IDLE;
+}
+function toggleModelo(slug) {
+  const m = modelo(slug);
+  if (!m) return;
+  let pick = (S.style.modelos || []).slice();
+  if (pick.includes(slug)) {
+    pick = pick.filter((s) => s !== slug);
+  } else {
+    // one modelo per exclusive family (two captions fight for the same words): the new pick replaces the old
+    if ((MODELOS.exclusivas || []).includes(m.familia)) pick = pick.filter((s) => (modelo(s) || {}).familia !== m.familia);
+    const ac = pick.filter((s) => (modelo(s) || {}).acento).length;
+    if (m.acento && ac >= MODELOS.maxAcentos) {
+      const n = $('modelosNote');
+      if (n) { n.textContent = `limite de ${MODELOS.maxAcentos} modelos de acento: desmarque um antes`; n.classList.add('warn'); }
+      return;
+    }
+    pick.push(slug);
+  }
+  S.style.modelos = pick;
+  paintModelos();
+}
+loadModelos();
+
 $('styleSetup').addEventListener('click', (e) => {
   // the accent controls manage themselves (live, no rebuild) — keep the card
   // handler off them, or a click in the hex field would count as a style pick
@@ -1890,6 +1987,8 @@ $('styleSetup').addEventListener('click', (e) => {
     renderSetup();
     return;
   }
+  const mod = e.target.closest('.mod');
+  if (mod) { toggleModelo(mod.dataset.slug); return; }
   const chk = e.target.closest('.chk');
   if (chk) {
     S.style.elements[chk.dataset.id] = !S.style.elements[chk.dataset.id];
@@ -1919,6 +2018,9 @@ $('setupGo').addEventListener('click', async () => {
     // hunting for an accent in a look that has none
     accentUsed: accentUsed(),
     elements: { ...S.style.elements },
+    // library modelos ticked in the "Modelos de edição" section (slugs + readable names)
+    modelos: [...(S.style.modelos || [])],
+    modelosNames: (S.style.modelos || []).map((s) => (modelo(s) || {}).nome || s),
     // forAspect: catalog names may be per-aspect functions (the edit layouts
     // are). Elements are plain strings today, but reading them raw would ship a
     // "(ls) => ..." into the payload the day one of them needs both aspects.
