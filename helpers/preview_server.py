@@ -23,6 +23,8 @@ Routes:
   /api/render   POST    kick off render_phase2.py in the background (one at a
                         time; a new request supersedes a running one)
   /api/render   GET     {running, startedAt, finishedAt, ok, log}
+  /api/modelos  GET     the editing-models library for the Estilo tab (modelos_picker.catalogo)
+  /modelos-media/<slug>/<demo.mp4|poster.jpg>   a modelo's rendered demo (gallery folder, outside git)
 
 Usage:
     uv run helpers/preview_server.py --root <videos_dir>/edit [--port 4820]
@@ -492,8 +494,30 @@ class Handler(BaseHTTPRequestHandler):
             self._state()
         elif path == "/api/engines":
             self._engines()
+        elif path == "/api/modelos":
+            self._modelos()
+        elif path.startswith("/modelos-media/"):
+            self._modelos_media(path[len("/modelos-media/"):])
         else:
             self._proxy()
+
+    def _modelos(self) -> None:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import modelos_picker
+            self._json(modelos_picker.catalogo())
+        except Exception as e:  # the section is optional: never break the tab over it
+            self._json({"modelos": [], "error": str(e)}, 500)
+
+    def _modelos_media(self, rest: str) -> None:
+        slug, _, name = rest.partition("/")
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import modelos_picker
+            p = modelos_picker.media_path(slug, name)
+        except Exception:
+            p = None
+        self._send_file(p) if p else self._json({"error": "sem demo"}, 404)
 
     def _engines(self) -> None:
         """Which Phase-2 layers HyperFrames draws (hfkit LAYERS) and, for this video,

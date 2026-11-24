@@ -25,7 +25,7 @@ adicionado a este mapa, ou se um item do mapa deixar de existir.
 | **Preview e estado da edição** | `preview_server`, `watch_edits`, `apply_preview_edits`, `agent_markers`, `staleness` | `SKILL.md` (Preview) |
 | **Gosto e aprendizado** | `client_profile`, `learnings` | `SKILL.md` (gate de Estilo) |
 | **Entrega** | `deliveries`, `publish` | `SKILL.md` (Entrega) |
-| **Modelos de edição** | `modelos`, `modelos_receitas`, `modelos_demo`, `cenas`, `cenas_titulo`, `cenas_lyric`, `cenas_legenda`, `cenas_antes` (cenas HyperFrames montadas por dados: antes-depois, card-ficha, titulo-misto, lyric-carro, legendas mista e palavra-chave) | `modelos/README.md` |
+| **Modelos de edição** | `modelos`, `modelos_receitas`, `modelos_demo`, `cenas`, `cenas_titulo`, `cenas_lyric`, `cenas_legenda`, `cenas_antes`, `modelos_picker` (seção Modelos da aba Estilo: catálogo, demos, regras) (cenas HyperFrames montadas por dados: antes-depois, card-ficha, titulo-misto, lyric-carro, legendas mista e palavra-chave) | `modelos/README.md` |
 | **Biblioteca externa** | `external_skills` | `external-video-skills.md` |
 
 ## Checks obrigatórios por momento

@@ -1129,6 +1129,17 @@ a caption style or tick one more element, and save again. That save arrives with
 `"rerender": true` and the watcher says **REFAÇA a Fase 2** — re-render with the
 new choices, don't treat it as a first pick.
 
+- **Modelos de edição** — the editing-models library, shown as cards that play the real rendered demo of
+  each modelo (`GET /api/modelos`, from `helpers/modelos_picker.py`; videos from the gallery folder, served
+  by `/modelos-media/<slug>/demo.mp4`). Several can be ticked; a second caption modelo replaces the first
+  (two captions fight for the same words) and a 4th accent modelo is refused. The save carries `modelos`
+  (slugs) and `modelosNames`. **Picking is the look; the parameters are yours**: for each slug, `modelos.py
+  show <slug>`, fill `--param`s from the video and the transcript (the giant word of `titulo-misto`, the
+  photo of `card-ficha`, the stretch `de`/`ate`), `modelos.py apply`, and for host `cena` render with
+  `cenas.py render`. A caption modelo (`legenda-*`) is a cena over a stretch of the clip: it does NOT replace
+  the caption layer of the rest of the video — say which stretch it covers. This section reads the library,
+  so a new modelo appears here without touching `app.js`.
+
 **The catalog lives in `STYLE_CATALOG` (app.js), not in a session.** A new editing
 or caption style is one entry there plus its implementation in the track
 reference; adding it in chat only, for one project, makes it invisible to every

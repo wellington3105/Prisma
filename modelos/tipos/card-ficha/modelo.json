@@ -81,5 +81,7 @@
     "assinatura": "@sualoja",
     "foco": "center 58%",
     "zoom": 1.45
-  }
+  },
+  "categoria": "Card",
+  "origem": "reels"
 }

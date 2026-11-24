@@ -940,6 +940,39 @@ kbd {
 }
 
 .opt-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ---- Modelos de edição (biblioteca; GET /api/modelos) ---- */
+.modelos { display: flex; flex-direction: column; gap: 14px; }
+.mod-fam-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45);
+  margin: 2px 0 6px; }
+.mod-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.mod { position: relative; width: 142px; display: flex; flex-direction: column; gap: 6px; padding: 7px; border-radius: 12px;
+  background: var(--glass); border: 1px solid var(--stroke); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.mod:hover { border-color: rgba(255, 255, 255, 0.22); }
+.mod.on { border-color: var(--orange); background: rgba(255, 138, 61, 0.07); }
+.mod-media { position: relative; width: 100%; aspect-ratio: 9 / 16; border-radius: 9px; overflow: hidden; background: #05070a;
+  border: 1px solid rgba(255, 255, 255, 0.06); }
+.mod-media video, .mod-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mod-vazio { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 11px; color: rgba(255, 255, 255, 0.4); padding: 8px; }
+.mod-name { font-size: 12px; font-weight: 600; line-height: 1.25; color: rgba(255, 255, 255, 0.82); min-height: 30px; }
+.mod.on .mod-name { color: rgba(255, 255, 255, 0.95); }
+.mod-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.mod-tag { font-size: 9.5px; padding: 1px 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.55); }
+.mod-tag.acento { background: rgba(255, 138, 61, 0.18); color: var(--orange); }
+.mod .opt-mark { top: 12px; right: 12px; }
+.group-note.warn { color: #ff9b9b; }
+.mfiltro { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.mfil { font-size: 11.5px; padding: 4px 11px; border-radius: 99px; background: var(--glass); border: 1px solid var(--stroke);
+  color: rgba(255, 255, 255, 0.7); cursor: pointer; user-select: none; }
+.mfil:hover { border-color: rgba(255, 255, 255, 0.25); }
+.mfil.on { border-color: var(--orange); color: var(--orange); background: rgba(255, 138, 61, 0.08); }
+.mfil .n { opacity: 0.55; margin-left: 4px; }
+.mod-grupo.hidden, .mod.hidden { display: none; }
+.mod-cat { font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--orange); font-weight: 700; }
+.mod-resumo { font-size: 10.5px; line-height: 1.3; color: rgba(255, 255, 255, 0.5); min-height: 42px; }
+.mod-tag.reels { background: rgba(80, 200, 160, 0.16); color: #5fd8b0; }
+.mod { width: 156px; }
 .check-row { display: flex; flex-wrap: wrap; gap: 8px; }
 /* says where the accent actually lands — or that the picked styles use none */
 .group-note { font-size: 11px; color: var(--muted, rgba(255, 255, 255, 0.42)); }
