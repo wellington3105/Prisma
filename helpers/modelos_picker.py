@@ -18,6 +18,11 @@ import modelos_demo as D  # noqa: E402
 import modelos_receitas as R  # noqa: E402
 
 MEDIA = ("demo.mp4", "poster.jpg")
+# What the user sees as the kind of thing a modelo is. A modelo's own `categoria` wins; else its family.
+CATEGORIAS = ["Legenda", "Título", "Card", "Formato", "Efeito", "Transição", "Câmera", "Velocidade", "Corte",
+              "Estilo pronto"]
+CATEGORIA_DA_FAMILIA = {"legenda": "Legenda", "grafismo": "Card", "formato": "Formato", "transicao": "Transição",
+                        "camera": "Câmera", "velocidade": "Velocidade", "corte": "Corte"}
 EXCLUSIVAS = ("legenda",)
 MAX_ACENTOS = R.MAX_ACENTOS
 
@@ -29,17 +34,35 @@ def _galeria() -> Path | None:
         return None
 
 
+def categoria(m: R.Modelo) -> str:
+    if m.nivel == "estilo":
+        return "Estilo pronto"
+    return m.dados.get("categoria") or CATEGORIA_DA_FAMILIA.get(m.familia, "Efeito")
+
+
+def resumo(m: R.Modelo, limite: int = 120) -> str:
+    """First sentence of "O que é", short enough to read on a card."""
+    t = " ".join(D._secao(m, "## O que é").split())
+    first = t.split(". ")[0].rstrip(".")
+    if len(first) > limite:
+        first = first[: limite - 1].rsplit(" ", 1)[0] + "…"
+    return first
+
+
 def catalogo() -> dict:
     g = _galeria()
     out = []
     for slug, m in sorted(R.load_all().items(), key=lambda kv: (kv[1].nivel != "estilo", kv[1].familia, kv[0])):
         out.append({"slug": slug, "nivel": m.nivel, "nome": m.dados.get("nome", slug), "familia": m.familia,
+                    "categoria": categoria(m), "resumo": resumo(m), "origem": m.dados.get("origem", ""),
                     "host": m.host, "acento": bool(m.dados.get("acento")),
                     "oQueE": D._secao(m, "## O que é"), "quandoUsar": D._secao(m, "## Quando usar"),
                     "quandoNaoUsar": D._secao(m, "## Quando não usar"),
                     "tipos": m.dados.get("tipos", []),
                     "demo": bool(g and (g / slug / "demo.mp4").exists() and D.demo_status(slug) == "✅")})
-    return {"modelos": out, "maxAcentos": MAX_ACENTOS, "exclusivas": list(EXCLUSIVAS)}
+    usadas = {m["categoria"] for m in out}
+    return {"modelos": out, "categorias": [c for c in CATEGORIAS if c in usadas], "maxAcentos": MAX_ACENTOS,
+            "exclusivas": list(EXCLUSIVAS)}
 
 
 def media_path(slug: str, name: str) -> Path | None:

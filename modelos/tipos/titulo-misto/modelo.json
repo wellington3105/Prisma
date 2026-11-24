@@ -74,5 +74,7 @@
     "cards": [
       "{foto}"
     ]
-  }
+  },
+  "categoria": "Título",
+  "origem": "reels"
 }

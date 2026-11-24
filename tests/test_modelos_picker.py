@@ -103,6 +103,33 @@ def test_app_has_the_section_and_sends_the_picks():
     assert "/api/modelos" in js and "modelosNames" in js and "modelos: [" in js.replace("modelos: S.style.modelos", "modelos: [")
 
 
+def test_every_modelo_has_a_plain_category_a_short_summary_and_a_source():
+    import modelos_picker as P
+    cat = P.catalogo()
+    by = {m["slug"]: m for m in cat["modelos"]}
+    want = {"legenda-mista": "Legenda", "legenda-palavra-chave": "Legenda", "titulo-misto": "Título",
+            "lyric-carro": "Título", "card-ficha": "Card", "antes-depois": "Formato", "flash": "Efeito",
+            "rgb-split": "Efeito", "shake-impacto": "Efeito", "whip-pan": "Transição", "zoom-through": "Transição",
+            "push-in": "Câmera", "speed-ramp": "Velocidade", "l-cut": "Corte", "reel-fala-broll": "Estilo pronto",
+            "montagem-na-batida": "Estilo pronto"}
+    for slug, c in want.items():
+        assert by[slug]["categoria"] == c, (slug, by[slug]["categoria"])
+    assert all(m["categoria"] in cat["categorias"] for m in cat["modelos"]), "toda categoria está na lista ordenada"
+    assert cat["categorias"][:3] == ["Legenda", "Título", "Card"]
+    for m in cat["modelos"]:
+        assert 20 <= len(m["resumo"]) <= 140, (m["slug"], m["resumo"])
+    novos = {s for s, m in by.items() if m["origem"] == "reels"}
+    assert novos == {"card-ficha", "titulo-misto", "lyric-carro", "legenda-mista", "legenda-palavra-chave",
+                     "antes-depois"}, novos
+
+
+def test_app_has_the_category_filter():
+    html = (SKILL / "assets" / "preview" / "index.html").read_text(encoding="utf-8")
+    js = (SKILL / "assets" / "preview" / "app.js").read_text(encoding="utf-8")
+    assert 'id="modelosFiltro"' in html
+    assert "m.categoria" in js and "m.resumo" in js and "dos reels" in js
+
+
 if __name__ == "__main__":
     fails = 0
     for name, f in list(globals().items()):

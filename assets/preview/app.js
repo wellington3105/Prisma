@@ -1910,18 +1910,18 @@ function renderModelos() {
         if (en.isIntersecting) en.target.play().catch(() => {}); else en.target.pause();
       }
     }, { rootMargin: '120px' });
-    const grupos = new Map();
-    for (const m of MODELOS.modelos) {
-      const k = m.nivel === 'estilo' ? 'Estilos (combinações prontas)' : m.familia;
-      if (!grupos.has(k)) grupos.set(k, []);
-      grupos.get(k).push(m);
-    }
+    const grupos = new Map(MODELOS.categorias.map((c) => [c, []]));
+    for (const m of MODELOS.modelos) grupos.get(m.categoria).push(m);
     for (const [titulo, ms] of grupos) {
-      el('div', 'mod-fam-title', host).textContent = titulo;
-      const row = el('div', 'mod-row', host);
+      const grupo = el('div', 'mod-grupo', host);
+      grupo.dataset.cat = titulo;
+      el('div', 'mod-fam-title', grupo).textContent = `${titulo} (${ms.length})`;
+      const row = el('div', 'mod-row', grupo);
       for (const m of ms) {
         const card = el('div', 'mod', row);
         card.dataset.slug = m.slug;
+        card.dataset.cat = m.categoria;
+        card.dataset.reels = m.origem === 'reels' ? '1' : '';
         card.title = `${m.oQueE}\n\nQuando usar: ${m.quandoUsar}\n\nQuando não usar: ${m.quandoNaoUsar}`;
         const media = el('div', 'mod-media', card);
         if (m.demo) {
@@ -1934,16 +1934,47 @@ function renderModelos() {
         } else {
           el('div', 'mod-vazio', media).textContent = 'sem demo ainda';
         }
+        el('div', 'mod-cat', card).textContent = m.categoria;
         el('div', 'mod-name', card).textContent = m.nome;
+        el('div', 'mod-resumo', card).textContent = m.resumo;
         const tags = el('div', 'mod-tags', card);
+        if (m.origem === 'reels') el('span', 'mod-tag reels', tags).textContent = 'dos reels';
         if (m.acento) el('span', 'mod-tag acento', tags).textContent = 'acento';
         el('span', 'mod-tag', tags).textContent = HOST_LABEL[m.host] || m.host;
         el('div', 'opt-mark', card);
       }
     }
     host.dataset.built = String(MODELOS.modelos.length);
+    renderFiltroModelos();
   }
   paintModelos();
+  applyFiltroModelos();
+}
+// the filter: "Todos", one chip per category, and "Novos dos reels" (the 6 modelos taken from the references)
+var modelosFiltro = 'todos';
+function renderFiltroModelos() {
+  const f = $('modelosFiltro');
+  if (!f) return;
+  f.innerHTML = '';
+  const nReels = MODELOS.modelos.filter((m) => m.origem === 'reels').length;
+  const chips = [['todos', 'Todos', MODELOS.modelos.length]];
+  if (nReels) chips.push(['reels', 'Novos dos reels', nReels]);
+  for (const c of MODELOS.categorias) chips.push([c, c, MODELOS.modelos.filter((m) => m.categoria === c).length]);
+  for (const [id, nome, n] of chips) {
+    const b = el('div', 'mfil', f);
+    b.dataset.id = id;
+    b.innerHTML = `${nome}<span class="n">${n}</span>`;
+  }
+}
+function applyFiltroModelos() {
+  document.querySelectorAll('#modelosFiltro .mfil').forEach((b) => b.classList.toggle('on', b.dataset.id === modelosFiltro));
+  document.querySelectorAll('#optModelos .mod').forEach((c) => {
+    const show = modelosFiltro === 'todos' || (modelosFiltro === 'reels' ? c.dataset.reels === '1' : c.dataset.cat === modelosFiltro);
+    c.classList.toggle('hidden', !show);
+  });
+  document.querySelectorAll('#optModelos .mod-grupo').forEach((g) => {
+    g.classList.toggle('hidden', !g.querySelector('.mod:not(.hidden)'));
+  });
 }
 function paintModelos() {
   const on = new Set(S.style.modelos || []);
@@ -1987,6 +2018,8 @@ $('styleSetup').addEventListener('click', (e) => {
     renderSetup();
     return;
   }
+  const mf = e.target.closest('.mfil');
+  if (mf) { modelosFiltro = mf.dataset.id; applyFiltroModelos(); return; }
   const mod = e.target.closest('.mod');
   if (mod) { toggleModelo(mod.dataset.slug); return; }
   const chk = e.target.closest('.chk');
