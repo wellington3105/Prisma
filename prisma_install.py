@@ -57,7 +57,8 @@ REMOTION_SUBDIRS = ("skills/remotion-best-practices", "skills/remotion")
 # Node is already checked below - but the skills that teach an agent how to use
 # it live in a subdirectory of the upstream repo, same shape as Remotion.
 HYPERFRAMES_REPO = "heygen-com/hyperframes"
-HYPERFRAMES_SKILLS = ("hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use")
+HYPERFRAMES_SKILLS = ("hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use",
+                      "reverse-any-video", "style-sampling")   # remake a reference; episode in a proven style
 
 # Aliases for the external video resources (prisma-ext-*, prisma-video-library)
 # ship inside this repo under skill-aliases/. Each SKILL.md names the Prisma
